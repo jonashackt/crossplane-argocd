@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: apps2deploy
+  namespace: argocd
+spec:
+  destinations:
+    - namespace: default
+      server: https://kubernetes.default.svc
+  sourceRepos:
+    - '*'
+  roles:
+    - description: project role to create and sync apps from a CI/CD pipeline
+      name: create-sync
+      policies:
+      - p, proj:apps2deploy:create-sync, applications, get, apps2deploy/*, allow
+      - p, proj:apps2deploy:create-sync, applications, create, apps2deploy/*, allow
+      - p, proj:apps2deploy:create-sync, applications, update, apps2deploy/*, allow
+      - p, proj:apps2deploy:create-sync, applications, delete, apps2deploy/*, allow
+      - p, proj:apps2deploy:create-sync, applications, sync, apps2deploy/*, allow
