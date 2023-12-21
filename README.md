@@ -176,7 +176,7 @@ stringData:
 We need to apply it via:
 
 ```shell
-kubectl apply -f crossplane/crossplane-argocd-helm-secret.yaml
+kubectl apply -f argocd/applications/crossplane-argocd-helm-secret.yaml
 ```
 
 
@@ -227,7 +227,7 @@ As the docs state https://argo-cd.readthedocs.io/en/stable/operator-manual/decla
 
 
 ```shell
-kubectl apply -n argocd -f crossplane/crossplane-argocd-application.yaml
+kubectl apply -n argocd -f argocd/applications/crossplane-argocd.yaml
 ```
 
 Now ArgoCD deploys our core crossplane components for us :)
@@ -235,6 +235,54 @@ Now ArgoCD deploys our core crossplane components for us :)
 Just have a look into Argo UI:
 
 ![](docs/argocd-deploys-crossplane.png)
+
+We can double check everything is there on the command line via:
+
+```shell
+kubectl get all -n crossplane-system
+```
+
+
+### Install & Configure crossplane AWS provider with ArgoCD
+
+Our crossplane AWS provider sits over at [upbound/provider-aws-s3/config/provider-aws-s3.yaml](upbound/provider-aws-s3/config/provider-aws-s3.yaml):
+
+```yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-s3
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-s3:v0.46.0
+  packagePullPolicy: Always
+  revisionActivationPolicy: Automatic
+  revisionHistoryLimit: 1
+```
+
+How do we let ArgoCD manage and deploy this to our cluster? The simple way of [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/) is what we're looking for. Therefore we create a new ArgoCD `Application` CRD at [argocd/applications/crossplane-provider-aws.yaml](argocd/applications/crossplane-provider-aws.yaml), which tells Argo to look in the directory path `upbound/provider-aws-s3/config`:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: provider-aws-s3
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: upbound/provider-aws-s3/config
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: HEAD
+```
+
+Let's apply this `Application` to our cluster also:
+
+```shell
+kubectl apply -n argocd -f argocd/applications/crossplane-provider-aws.yaml 
+```
 
 
 

@@ -1,0 +1,52 @@
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  # XRDs must be named 'x<plural>.<group>'
+  name: xobjectstorages.crossplane.jonashackt.io
+spec:
+  # This XRD defines an XR in the 'crossplane.jonashackt.io' API group.
+  # The XR or Claim must use this group together with the spec.versions[0].name as it's apiVersion, like this:
+  # 'crossplane.jonashackt.io/v1alpha1'
+  group: crossplane.jonashackt.io
+  
+  # XR names should always be prefixed with an 'X'
+  names:
+    kind: XObjectStorage
+    plural: xobjectstorages
+  # This type of XR offers a claim, which should have the same name without the 'X' prefix
+  claimNames:
+    kind: ObjectStorage
+    plural: objectstorages
+  
+  # default Composition when none is specified (must match metadata.name of a provided Composition)
+  # e.g. in composition.yaml
+  defaultCompositionRef:
+    name: objectstorage-composition
+
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    # OpenAPI schema (like the one used by Kubernetes CRDs). Determines what fields
+    # the XR (and claim) will have. Will be automatically extended by crossplane.
+    # See https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/
+    # for full CRD documentation and guide on how to write OpenAPI schemas
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            # We define all needed parameters here one has to provide as XR or Claim spec.parameters
+            properties:
+              parameters:
+                type: object
+                properties:
+                  bucketName:
+                    type: string
+                  region:
+                    type: string
+                required:
+                  - bucketName
+                  - region

@@ -1,0 +1,20 @@
+---
+# Use the spec.group/spec.versions[0].name defined in the XRD
+apiVersion: crossplane.jonashackt.io/v1alpha1
+# Use the spec.claimName or spec.name specified in the XRD
+kind: ObjectStorage
+metadata:
+  # Only claims are namespaced, unlike XRs.
+  namespace: default
+  name: managed-upbound-s3
+spec:
+  # The compositionRef specifies which Composition this XR will use to compose
+  # resources when it is created, updated, or deleted.
+  compositionRef:
+    name: objectstorage-composition
+  
+  # Parameters for the Composition to provide the Managed Resources (MR) with
+  # to create the actual infrastructure components
+  parameters:
+    bucketName: devopsthde-bucket
+    region: eu-central-1
