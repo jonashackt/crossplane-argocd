@@ -1,0 +1,9 @@
+apiVersion: v2
+type: application
+name: crossplane
+version: 0.0.0 # unused
+appVersion: 0.0.0 # unused
+dependencies:
+  - name: crossplane
+    repository: https://charts.crossplane.io/stable
+    version: 1.14.4
