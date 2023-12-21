@@ -243,6 +243,32 @@ kubectl get all -n crossplane-system
 ```
 
 
+### Create aws-creds.conf file & create AWS Provider secret
+
+https://docs.crossplane.io/latest/getting-started/provider-aws/#generate-an-aws-key-pair-file
+
+I assume here that you have [aws CLI installed and configured](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html). So that the command `aws configure` should work on your system. With this prepared we can create an `aws-creds.conf` file:
+
+```shell
+echo "[default]
+aws_access_key_id = $(aws configure get aws_access_key_id)
+aws_secret_access_key = $(aws configure get aws_secret_access_key)
+" > aws-creds.conf
+```
+
+> Don't ever check this file into source control - it holds your AWS credentials! For this repository I added `*-creds.conf` to the [.gitignore](.gitignore) file. 
+
+
+Now we need to use the `aws-creds.conf` file to create the Crossplane AWS Provider secret:
+
+```shell
+kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./aws-creds.conf
+```
+
+__TODO:__ create Secret as via manifest (in GitHub Actions)?!
+
+
+
 ### Install & Configure crossplane AWS provider with ArgoCD
 
 Our crossplane AWS provider sits over at [upbound/provider-aws-s3/config/provider-aws-s3.yaml](upbound/provider-aws-s3/config/provider-aws-s3.yaml):
