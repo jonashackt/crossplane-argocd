@@ -10,11 +10,18 @@ __The idea is "simple": Why not treat infrastructure deployments/provisioning th
 
 First we need a simple management cluster for our ArgoCD and crossplane deployments. [As in the base project](https://github.com/jonashackt/crossplane-aws-azure) we simply use kind here:
 
-Be sure to have kind, the package manager Helm and kubectl installed:
+Be sure to have some packages installed. On a Mac:
 
 ```shell
-brew install kind helm kubectl kustomize
+brew install kind helm kubectl kustomize argocd
 ```
+
+Or on Arch/Manjaro:
+
+```shell
+pamac install kind-bin helm kubectl-bin kustomize argocd
+```
+
 
 https://docs.crossplane.io/latest/cli/
 
@@ -124,6 +131,122 @@ Now access the ArgoCD UI inside your Browser at http://localhost:8080 using `adm
 
 
 
+### Login ArgoCD CLI into our argocd-server installed in kind
+
+https://argo-cd.readthedocs.io/en/stable/getting_started/#4-login-using-the-cli
+
+In order to be able to add applications to Argo, we should login our ArgoCD CLI into our `argocd-server` Pod installed in kind:
+
+```shell
+argocd login localhost:8080 --username admin --password $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo) --insecure
+```
+
+Remember to change the initial password in production environments!
+
+
+
+### Let ArgoCD install crossplane
+
+Is it possible to already use the GitOps approach right from here on to install crossplane? Let's try it.
+
+As already used from https://github.com/jonashackt/crossplane-aws-azure and explained in https://stackoverflow.com/a/71765472/4964553 we have a simple Helm chart, which is able to be managed by RenovateBot - and thus kept up-to-date.
+
+This Helm chart needs to be picked up by Argo in a declarative GitOps way (not through the UI).
+
+But as this is a non-standard Helm Chart, we need to define a `Secret` first [as the docs state](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#helm-chart-repositories):
+
+> "Non standard Helm Chart repositories have to be registered explicitly. Each repository must have url, type and name fields."
+
+So we first create [`crossplane-argocd-helm-secret.yaml`](crossplane/crossplane-argocd-helm-secret.yaml):
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: crossplane-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  name: crossplane-argocd
+  url: https://charts.crossplane.io/stable
+  type: helm 
+```
+
+We need to apply it via:
+
+```shell
+kubectl apply -f crossplane/crossplane-argocd-helm-secret.yaml
+```
+
+
+First we should create the namespace:
+
+```shell
+kubectl create namespace crossplane-system
+```
+
+
+crossplane as ArgoCD Application:
+
+```yaml
+# The ArgoCD Application for crossplane core components themselves
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-argocd
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: HEAD
+    path: crossplane
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: crossplane-system
+  syncPolicy:
+    automated:
+      prune: true    
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 1
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+As the docs state https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#applications
+
+> "Without the resources-finalizer.argocd.argoproj.io finalizer, deleting an application will not delete the resources it manages. To perform a cascading delete, you must add the finalizer. See App Deletion."
+
+
+```shell
+kubectl apply -n argocd -f crossplane/crossplane-argocd-application.yaml
+```
+
+Now ArgoCD deploys our core crossplane components for us :)
+
+Just have a look into Argo UI:
+
+![](docs/argocd-deploys-crossplane.png)
+
+
+
+
+
+
+### App deployment
+
+
+```shell
+argocd app create restexamples-cli --repo https://github.com/jonashackt/restexamples-k8s-config.git --path deployment --dest-server https://kubernetes.default.svc --dest-namespace default --revision argocd --sync-policy auto
+```
 
 
 
