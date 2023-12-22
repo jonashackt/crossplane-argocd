@@ -8,7 +8,7 @@ metadata:
 spec:
   project: default
   source:
-    path: upbound/provider-aws-s3/provider
+    path: upbound/provider-aws-s3/config
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
   destination:
