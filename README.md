@@ -228,7 +228,9 @@ spec:
 
 As the docs state https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#applications
 
-> "Without the resources-finalizer.argocd.argoproj.io finalizer, deleting an application will not delete the resources it manages. To perform a cascading delete, you must add the finalizer. See App Deletion."
+> "Without the `resources-finalizer.argocd.argoproj.io finalizer`, deleting an application will not delete the resources it manages. To perform a cascading delete, you must add the finalizer. See [App Deletion](https://argo-cd.readthedocs.io/en/stable/user-guide/app_deletion/#about-the-deletion-finalizer)."
+
+In other words, if we would run `kubectl delete -n argocd -f argocd/applications/crossplane-argocd.yaml`, Crossplane wouldn't be undeployed as we may think. Only the ArgoCD `Application` would be deleted, but Crossplane Pods etc. would be still running.
 
 Our `Application` configures Crossplane core componentes to be automatically pruned https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/#automatic-pruning via `automated: prune: true`.
 
@@ -280,7 +282,7 @@ __TODO:__ create Secret as via manifest (in GitHub Actions)?!
 
 
 
-### Install & Configure crossplane AWS provider with ArgoCD
+### Install crossplane's AWS provider with ArgoCD
 
 Our crossplane AWS provider sits over at [upbound/provider-aws-s3/config/provider-aws-s3.yaml](upbound/provider-aws-s3/config/provider-aws-s3.yaml):
 
@@ -304,22 +306,61 @@ kind: Application
 metadata:
   name: provider-aws-s3
   namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    path: upbound/provider-aws-s3/provider
+    path: upbound/provider-aws-s3/config
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
   destination:
     namespace: default
     server: https://kubernetes.default.svc
+  # Using syncPolicy.automated here, otherwise the deployement of our Crossplane provider will fail with
+  # 'Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3'
+  syncPolicy:
+    automated: 
+      prune: true     
 ```
+
+The crucial point here is to use the `syncPolicy.automated` flag as described in the docs: https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/ Otherwise the deployment the Crossplane `provider-aws-s3` will give the following error:
+
+```shell
+Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3
+```
+
+We also use the finalizer `resources-finalizer.argocd.argoproj.io finalizer` like we did with the Crossplane core components so that a `kubectl delete -f` would also undeploy all components of our Provider `provider-aws-s3`.
 
 Let's apply this `Application` to our cluster also:
 
 ```shell
 kubectl apply -n argocd -f argocd/applications/crossplane-provider-aws.yaml 
 ```
+
+
+### Install crossplane's AWS provider ProviderConfig with ArgoCD
+
+To get our Provider finally working we also need to create a `ProviderConfig` accordingly that will tell the Provider where to find it's AWS credentials. Therefore we create a [upbound/provider-aws-s3/config/provider-config-aws.yaml](upbound/provider-aws-s3/config/provider-config-aws.yaml):
+
+```yaml
+apiVersion: aws.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: aws-creds
+      key: creds
+```
+
+> Crossplane resources use the `ProviderConfig` named `default` if no specific ProviderConfig is specified, so this ProviderConfig will be the default for all AWS resources.
+
+The `secretRef.name` and `secretRef.key` has to match the fields of the already created Secret.
+
 
 
 
