@@ -1,14 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: provider-aws-s3
+  name: provider-config-aws
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    path: upbound/provider-aws-s3/provider
+    path: upbound/provider-aws-s3/config
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
   destination:

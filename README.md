@@ -339,6 +339,20 @@ kubectl apply -n argocd -f argocd/applications/crossplane-provider-aws.yaml
 ```
 
 
+We run into the following error while syncing in Argo:
+
+```shell
+The Kubernetes API could not find aws.upbound.io/ProviderConfig for requested resource default/default. Make sure the "ProviderConfig" CRD is installed on the destination cluster.
+```
+
+![](docs/argocd-crossplane-provider-sync-failed.png)
+
+
+
+
+
+
+
 ### Install crossplane's AWS provider ProviderConfig with ArgoCD
 
 To get our Provider finally working we also need to create a `ProviderConfig` accordingly that will tell the Provider where to find it's AWS credentials. Therefore we create a [upbound/provider-aws-s3/config/provider-config-aws.yaml](upbound/provider-aws-s3/config/provider-config-aws.yaml):
@@ -397,3 +411,10 @@ https://docs.upbound.io/spaces/git-integration/
 https://codefresh.io/blog/using-gitops-infrastructure-applications-crossplane-argo-cd/
 
 Configuration drift in Tf: Terraform horror stories about incomplete/invalid state https://www.youtube.com/watch?v=ix0Tw8uinWs
+
+
+
+
+BADGES :
+
+https://argo-cd.readthedocs.io/en/stable/user-guide/status-badge/
