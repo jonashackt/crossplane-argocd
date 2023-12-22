@@ -149,9 +149,21 @@ Remember to change the initial password in production environments!
 
 Is it possible to already use the GitOps approach right from here on to install crossplane? Let's try it.
 
-As already used from https://github.com/jonashackt/crossplane-aws-azure and explained in https://stackoverflow.com/a/71765472/4964553 we have a simple Helm chart, which is able to be managed by RenovateBot - and thus kept up-to-date.
+As already used from https://github.com/jonashackt/crossplane-aws-azure and explained in https://stackoverflow.com/a/71765472/4964553 we have a simple Helm chart, which is able to be managed by RenovateBot - and thus kept up-to-date. Our Chart lives in [`crossplane/Chart.yaml`](crossplane/Chart.yaml):
 
-This Helm chart needs to be picked up by Argo in a declarative GitOps way (not through the UI).
+```yaml
+apiVersion: v2
+type: application
+name: crossplane-argocd
+version: 0.0.0 # unused
+appVersion: 0.0.0 # unused
+dependencies:
+  - name: crossplane
+    repository: https://charts.crossplane.io/stable
+    version: 1.14.4
+```
+
+__This Helm chart needs to be picked up by Argo in a declarative GitOps way (not through the UI).__
 
 But as this is a non-standard Helm Chart, we need to define a `Secret` first [as the docs state](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#helm-chart-repositories):
 
@@ -180,14 +192,7 @@ kubectl apply -f argocd/applications/crossplane-argocd-helm-secret.yaml
 ```
 
 
-First we should create the namespace:
-
-```shell
-kubectl create namespace crossplane-system
-```
-
-
-crossplane as ArgoCD Application:
+Now telling ArgoCD where to find our simple Crossplane Helm Chart, we use Argo's `Application` manifest:
 
 ```yaml
 # The ArgoCD Application for crossplane core components themselves
@@ -224,6 +229,12 @@ spec:
 As the docs state https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#applications
 
 > "Without the resources-finalizer.argocd.argoproj.io finalizer, deleting an application will not delete the resources it manages. To perform a cascading delete, you must add the finalizer. See App Deletion."
+
+Our `Application` configures Crossplane core componentes to be automatically pruned https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/#automatic-pruning via `automated: prune: true`.
+
+We also use `syncOptions: - CreateNamespace=true` here [to let Argo create the crossplane `crossplane-system` namespace for us automatically](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/#create-namespace).
+
+
 
 
 ```shell
@@ -294,14 +305,14 @@ metadata:
   name: provider-aws-s3
   namespace: argocd
 spec:
+  project: default
+  source:
+    path: upbound/provider-aws-s3/config/provider
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: HEAD
   destination:
     namespace: default
     server: https://kubernetes.default.svc
-  project: default
-  source:
-    path: upbound/provider-aws-s3/config
-    repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: HEAD
 ```
 
 Let's apply this `Application` to our cluster also:

@@ -1,6 +1,6 @@
 apiVersion: v2
 type: application
-name: crossplane
+name: crossplane-argocd
 version: 0.0.0 # unused
 appVersion: 0.0.0 # unused
 dependencies:
