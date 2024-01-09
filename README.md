@@ -544,6 +544,9 @@ And like magic all our Crossplane components get deployed step by step in correc
 ![](docs/crossplane-app-of-apps-successful-deployed.png)
 
 
+Now if we have a look into `crossplane` App of Apps we see all the needed components to deploy a running Crossplane installation using ArgoCD (which I found is super nice):
+
+![](docs/crossplane-app-of-apps-detail-view.png)
 
 
 
