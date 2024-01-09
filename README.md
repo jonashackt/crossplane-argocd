@@ -113,6 +113,14 @@ kubectl apply -k argocd/install
 ```
 
 
+__TODO:__ Configure Argo configmaps to handle Crossplane correctly
+
+https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/
+
+
+
+
+
 ### Accessing ArgoCD GUI
 
 First we need to obtain the initial password for the `admin` user via:
@@ -145,7 +153,9 @@ Remember to change the initial password in production environments!
 
 
 
-### Let ArgoCD install crossplane
+
+
+# Let ArgoCD install Crossplane
 
 Is it possible to already use the GitOps approach right from here on to install crossplane? Let's try it.
 
@@ -192,7 +202,7 @@ kubectl apply -f argocd/applications/crossplane-argocd-helm-secret.yaml
 ```
 
 
-Now telling ArgoCD where to find our simple Crossplane Helm Chart, we use Argo's `Application` manifest:
+Now telling ArgoCD where to find our simple Crossplane Helm Chart, we use Argo's `Application` manifest in [argocd/applications/crossplane-argocd.yaml](argocd/applications/crossplane-argocd.yaml):
 
 ```yaml
 # The ArgoCD Application for crossplane core components themselves
@@ -284,7 +294,7 @@ __TODO:__ create Secret as via manifest (in GitHub Actions)?!
 
 ### Install crossplane's AWS provider with ArgoCD
 
-Our crossplane AWS provider sits over at [upbound/provider-aws-s3/config/provider-aws-s3.yaml](upbound/provider-aws-s3/config/provider-aws-s3.yaml):
+Our crossplane AWS provider reside in [upbound/provider-aws-s3/config/provider-aws-s3.yaml](upbound/provider-aws-s3/config/provider-aws-s3.yaml):
 
 ```yaml
 apiVersion: pkg.crossplane.io/v1
@@ -324,11 +334,15 @@ spec:
       prune: true     
 ```
 
-The crucial point here is to use the `syncPolicy.automated` flag as described in the docs: https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/ Otherwise the deployment the Crossplane `provider-aws-s3` will give the following error:
+The crucial point here is to use the `syncPolicy.automated` flag as described in the docs: https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/. Otherwise the deployment of the Crossplane `provider-aws-s3` will give the following error:
 
 ```shell
 Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3
 ```
+
+The automated syncPolicy makes sure that child apps are automatically created, synced, and deleted when the manifest is changed.
+
+> This flag enables ArgoCD's "true" GitOps feature, where the CI/CD pipeline doesn't deploy themselfes (Push-based GitOps) but only makes a git commit. Then the GitOps operator inside the Kubernetes cluster (here ArgoCD) recognizes the change in the Git repository and deploys the changes to match the state of the repository in the cluster.
 
 We also use the finalizer `resources-finalizer.argocd.argoproj.io finalizer` like we did with the Crossplane core components so that a `kubectl delete -f` would also undeploy all components of our Provider `provider-aws-s3`.
 
@@ -346,9 +360,6 @@ The Kubernetes API could not find aws.upbound.io/ProviderConfig for requested re
 ```
 
 ![](docs/argocd-crossplane-provider-sync-failed.png)
-
-
-
 
 
 
@@ -374,6 +385,76 @@ spec:
 > Crossplane resources use the `ProviderConfig` named `default` if no specific ProviderConfig is specified, so this ProviderConfig will be the default for all AWS resources.
 
 The `secretRef.name` and `secretRef.key` has to match the fields of the already created Secret.
+
+
+To let ArgoCD manage and deploy our `ProviderConfig` we again create a new ArgoCD `Application` CRD at [argocd/applications/crossplane-provider-config-aws.yaml](argocd/applications/crossplane-provider-config-aws.yaml) [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/), which tells Argo to look in the directory path `upbound/provider-aws-s3/config`:
+
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: provider-config-aws
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    path: upbound/provider-aws-s3/config
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: HEAD
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  # Using syncPolicy.automated here, otherwise the deployement of our Crossplane provider will fail with
+  # 'Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3'
+  syncPolicy:
+    automated: 
+      prune: true    
+```
+
+
+
+```shell
+kubectl apply -n argocd -f argocd/applications/crossplane-provider-aws.yaml 
+```
+
+
+
+We finally managed to let Argo deploy the Crossplane core components together with the AWS Provider and ProviderConfig correctly:
+
+![](docs/crossplane-core-provider-providerconfig-successfully-deployed.png)
+
+
+
+
+# Using ArgoCD's AppOfApps pattern to deploy Crossplane components
+
+### Why our current setup is sub optimal
+
+While our setup works now and also fully implements the GitOps way, we have a lot of `Application` files, that need to be applied in a specific order. Furthermore the `Provider` and `ProviderConfig` manifests (which simply configure the AWS Crossplane Provider) need to reside in different directories - `upbound/provider-aws-s3/provider` and `upbound/provider-aws-s3/config`. If we would use [an Application that points to a directory](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/) with multiple manifests, we'll run into errors like this:
+
+```shell
+The Kubernetes API could not find aws.upbound.io/ProviderConfig for requested resource default/default. Make sure the "ProviderConfig" CRD is installed on the destination cluster.
+```
+
+Since deployment order wouldn't be clear and the `Provider` manifests need to be fully deployed before the `ProviderConfig` - otherwise the deployment fails because of missing CRDs. 
+
+__Wouldn't be Argo's SyncWaves feature a great match for that issue?__
+
+> The ArgoCD docs have a great video explaining SyncWaves and Hooks: https://www.youtube.com/watch?v=zIHe3EVp528
+
+> Another great SyncWave tutorial can be found here https://redhat-scholars.github.io/argocd-tutorial/argocd-tutorial/04-syncwaves-hooks.html
+
+Sadly using Argo's [`SyncWaves` feature](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/) doesn't really help here, if we use them at the `Application` level. I had a hard time figuring that one out, but to really use the SyncWaves feature, we would need to use the annotations like `metadata: annotations: argocd.argoproj.io/sync-wave: "2"` on every of the Crossplane Provider's Kubernetes objects (and thus alter the manifests to add the annotation).
+
+
+
+
+
+
+
 
 
 
