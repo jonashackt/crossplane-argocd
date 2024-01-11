@@ -63,7 +63,10 @@ jobs:
 
       - name: Check crossplane status
         run: |
-          echo "### Wait for crossplane to become ready before installing Providers"
+          echo "### Give Argo some time to deploy stuff"
+          sleep 30s
+
+          echo "### Wait for crossplane to become ready"
           kubectl wait --for=condition=ready pod -l app=crossplane --namespace crossplane-system --timeout=120s
 
           echo "### Wait until AWS Provider is up and running"
