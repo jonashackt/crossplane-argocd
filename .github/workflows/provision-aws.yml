@@ -50,6 +50,9 @@ jobs:
           aws_secret_access_key = $AWS_SECRET_ACCESS_KEY
           " > aws-creds.conf
           
+          echo "### Create a namespace for crossplane"
+          kubectl create namespace crossplane-system
+
           echo "### Create AWS Provider secret"
           kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./aws-creds.conf
 

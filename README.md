@@ -614,6 +614,9 @@ jobs:
           aws_secret_access_key = $AWS_SECRET_ACCESS_KEY
           " > aws-creds.conf
           
+          echo "### Create a namespace for crossplane"
+          kubectl create namespace crossplane-system
+
           echo "### Create AWS Provider secret"
           kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./aws-creds.conf
 
@@ -631,6 +634,7 @@ jobs:
           kubectl wait --for=condition=healthy --timeout=180s provider/provider-aws-s3
 
           kubectl get all -n crossplane-system
+
 ```
 
 Be sure to create both `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` configured as GitHub Repository Secrets:
