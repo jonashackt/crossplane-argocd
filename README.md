@@ -582,24 +582,28 @@ jobs:
 
       - name: Install & spin up kind via brew
         run: |
-          echo "### Add homebrew to path as described in https://github.com/actions/runner-images/blob/main/images/linux/Ubuntu2004-Readme.md#notes"
+          echo "--- Add homebrew to path as described in https://github.com/actions/runner-images/blob/main/images/linux/Ubuntu2004-Readme.md#notes"
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 
-          echo "### Install kind via brew"
+          echo "--- Install kind via brew"
           brew install kind
 
-          echo "### Create kind cluster"
+          echo "--- Create kind cluster"
           kind create cluster --image "kindest/node:$KIND_NODE_VERSION" --wait 5m
 
-          echo "### Let's try to access our kind cluster via kubectl"
+          echo "--- Let's try to access our kind cluster via kubectl"
           kubectl get nodes
 
       - name: Install ArgoCD into kind & ArgoCD CLI in the shell
         run: |
           echo "--- Create argo namespace and install it"
-          kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-          echo "--- Install & configure ArgoCD via Kustomize - see https://stackoverflow.com/a/71692892/4964553"
-          kubectl apply -k argocd/install  
+          kubectl create namespace argocd
+
+          echo " Install & configure ArgoCD via Kustomize - see https://stackoverflow.com/a/71692892/4964553"
+          kubectl apply -k argocd/install
+          
+          echo "--- Wait for Argo to become ready"
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s
 
           echo "--- Since there's no brew ready to use anymore (https://github.com/actions/runner-images/issues/6283), we use the curl installation method here (see https://argo-cd.readthedocs.io/en/stable/cli_installation/#download-with-curl)"
           curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
@@ -608,32 +612,35 @@ jobs:
 
       - name: Prepare crossplane AWS Secret
         run: |
-          echo "### Create aws-creds.conf file"
+          echo "--- Create aws-creds.conf file"
           echo "[default]
           aws_access_key_id = $AWS_ACCESS_KEY_ID
           aws_secret_access_key = $AWS_SECRET_ACCESS_KEY
           " > aws-creds.conf
           
-          echo "### Create a namespace for crossplane"
+          echo "--- Create a namespace for crossplane"
           kubectl create namespace crossplane-system
 
-          echo "### Create AWS Provider secret"
+          echo "--- Create AWS Provider secret"
           kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./aws-creds.conf
 
       - name: Use ArgoCD's AppOfApps pattern to deploy all Crossplane components
         run: |
-          echo "### Let Argo do it's magic installing all Crossplane components"
+          echo "--- Let Argo do it's magic installing all Crossplane components"
           kubectl apply -n argocd -f argocd/crossplane-app-of-apps.yaml 
 
       - name: Check crossplane status
         run: |
-          echo "### Wait for crossplane to become ready (now wrapped in until to prevent error: no matching resources found)"
+          echo "--- Wait for crossplane to become ready (now wrapped in until to prevent error: no matching resources found)"
           until kubectl wait --for=condition=ready pod -l app=crossplane --namespace crossplane-system --timeout=120s; do : ; done
 
-          echo "### Wait until AWS Provider is up and running"
+          echo "--- Wait until AWS Provider is up and running"
           kubectl wait --for=condition=healthy --timeout=180s provider/provider-aws-s3
 
           kubectl get all -n crossplane-system
+
+
+
 
 ```
 
