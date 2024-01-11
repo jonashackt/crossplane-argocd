@@ -16,8 +16,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@master
 
-      - name: Spin up kind
+      - name: Install & spin up kind via brew
         run: |
+          echo "--- Add homebrew to path as described in https://github.com/actions/runner-images/blob/main/images/linux/Ubuntu2004-Readme.md#notes"
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+
+          echo "--- Install kind via brew"
+          brew install kind
+          
           echo "--- Create kind cluster"
           kind create cluster --image "kindest/node:$KIND_NODE_VERSION" --wait 5m
 
