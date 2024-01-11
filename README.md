@@ -1,4 +1,8 @@
 # crossplane-argocd
+[![Build Status AWS](https://github.com/jonashackt/crossplane-argocd/workflows/provision-aws/badge.svg)](https://github.com/jonashackt/crossplane-argocd/actions/workflows/provision-aws.yml)
+[![License](http://img.shields.io/:license-mit-blue.svg)](https://github.com/jonashackt/crossplane-argocd/blob/master/LICENSE)
+[![renovateenabled](https://img.shields.io/badge/renovate-enabled-yellow)](https://renovatebot.com)
+
 Example project showing how to use the crossplane together with ArgoCD
 
 > This project is based on the crossplane only repository https://github.com/jonashackt/crossplane-aws-azure, where the basics about crossplane.io are explained in detail - incl. how to provision to AWS and Azure.
@@ -553,6 +557,92 @@ Now if we have a look into `crossplane` App of Apps we see all the needed compon
 
 
 
+# Doing it all with GitHub Actions
+
+Ok, enough theory :)) Let's create a pipeline that shows stuff works. Let's introduce a [.github/workflows/provision-aws.yml](.github/workflows/provision-aws.yml):
+
+```yaml
+name: provision-aws
+
+on: [push]
+
+env:
+  KIND_NODE_VERSION: v1.29.0
+  # AWS
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_DEFAULT_REGION: 'eu-central-1'
+
+jobs:
+  crossplane-provision-aws:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+
+      - name: Install & spin up kind via brew
+        run: |
+          echo "### Add homebrew to path as described in https://github.com/actions/runner-images/blob/main/images/linux/Ubuntu2004-Readme.md#notes"
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+
+          echo "### Install kind via brew"
+          brew install kind
+
+          echo "### Create kind cluster"
+          kind create cluster --image "kindest/node:$KIND_NODE_VERSION" --wait 5m
+
+          echo "### Let's try to access our kind cluster via kubectl"
+          kubectl get nodes
+
+      - name: Install ArgoCD into kind & ArgoCD CLI in the shell
+        run: |
+          echo "--- Create argo namespace and install it"
+          kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+          echo "--- Install & configure ArgoCD via Kustomize - see https://stackoverflow.com/a/71692892/4964553"
+          kubectl apply -k argocd/install  
+
+          echo "--- Since there's no brew ready to use anymore (https://github.com/actions/runner-images/issues/6283), we use the curl installation method here (see https://argo-cd.readthedocs.io/en/stable/cli_installation/#download-with-curl)"
+          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+          rm argocd-linux-amd64
+
+      - name: Prepare crossplane AWS Secret
+        run: |
+          echo "### Create aws-creds.conf file"
+          echo "[default]
+          aws_access_key_id = $AWS_ACCESS_KEY_ID
+          aws_secret_access_key = $AWS_SECRET_ACCESS_KEY
+          " > aws-creds.conf
+          
+          echo "### Create AWS Provider secret"
+          kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./aws-creds.conf
+
+      - name: Use ArgoCD's AppOfApps pattern to deploy all Crossplane components
+        run: |
+          echo "### Let Argo do it's magic installing all Crossplane components"
+          kubectl apply -n argocd -f argocd/crossplane-app-of-apps.yaml 
+
+      - name: Check crossplane status
+        run: |
+          echo "### Wait for crossplane to become ready before installing Providers"
+          kubectl wait --for=condition=ready pod -l app=crossplane --namespace crossplane-system --timeout=120s
+
+          echo "### Wait until AWS Provider is up and running"
+          kubectl wait --for=condition=healthy --timeout=180s provider/provider-aws-s3
+
+          kubectl get all -n crossplane-system
+```
+
+Be sure to create both `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` configured as GitHub Repository Secrets:
+
+![github-actions-secrets](docs/github-actions-secrets.png)
+
+Also make sure to have your `Default region` configured as a `env:` variable.
+
+
+
+
+
 # Links
 
 https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/
@@ -573,6 +663,14 @@ https://codefresh.io/blog/using-gitops-infrastructure-applications-crossplane-ar
 
 Configuration drift in Tf: Terraform horror stories about incomplete/invalid state https://www.youtube.com/watch?v=ix0Tw8uinWs
 
+
+## GitOps & Secrets
+
+https://www.redhat.com/en/blog/a-guide-to-secrets-management-with-gitops-and-kubernetes
+
+https://betterprogramming.pub/why-you-should-avoid-sealed-secrets-in-your-gitops-deployment-e50131d360dd
+
+https://akuity.io/blog/how-to-manage-kubernetes-secrets-gitops 
 
 
 
