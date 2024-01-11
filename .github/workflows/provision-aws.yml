@@ -16,14 +16,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@master
 
-      - name: Install & spin up kind via brew
+      - name: Spin up kind
         run: |
-          echo "--- Add homebrew to path as described in https://github.com/actions/runner-images/blob/main/images/linux/Ubuntu2004-Readme.md#notes"
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-
-          echo "--- Install kind via brew"
-          brew install kind
-
           echo "--- Create kind cluster"
           kind create cluster --image "kindest/node:$KIND_NODE_VERSION" --wait 5m
 
@@ -70,9 +64,7 @@ jobs:
           echo "--- Wait for crossplane to become ready (now wrapped in until to prevent error: no matching resources found)"
           until kubectl wait --for=condition=ready pod -l app=crossplane --namespace crossplane-system --timeout=120s; do : ; done
 
-          echo "--- Wait until AWS Provider is up and running"
-          kubectl wait --for=condition=healthy --timeout=180s provider/provider-aws-s3
+          echo "--- Wait until AWS Provider is up and running (now wrapped in until to prevent Error from server (NotFound): providers.pkg.crossplane.io 'provider-aws-s3' not found)"
+          until kubectl wait --for=condition=healthy --timeout=180s provider/provider-aws-s3; do : ; done
 
           kubectl get all -n crossplane-system
-
-
