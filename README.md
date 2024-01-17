@@ -644,6 +644,62 @@ Also make sure to have your `Default region` configured as a `env:` variable.
 
 
 
+# Getting rid of the manual K8s Secrets creation
+
+CI pushes Secrets into the cluster via `kubectl apply`...
+
+This is an anti-GitOps pattern - so let's do something different!
+
+TODO: Insert why here :) GitOps Pull instead of Push...
+
+
+After reading through lot's of "How to manage Secrets with GitOps articles" (like [this](https://www.redhat.com/en/blog/a-guide-to-secrets-management-with-gitops-and-kubernetes), [this](https://betterprogramming.pub/why-you-should-avoid-sealed-secrets-in-your-gitops-deployment-e50131d360dd) and [this](https://akuity.io/blog/how-to-manage-kubernetes-secrets-gitops ) to name a few), I found that there's currently no widly accepted way of doing it. But there are some recommendations. E.g. checking Secrets into Git (although encrypted) using [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) or [SOPS](https://github.com/getsops/sops)/[KSOPS](https://github.com/viaduct-ai/kustomize-sops) might seem like the kind of easiest solution in the first place. But they have their own caveats in the long therm. Think of multiple secrets defined in multiple projects used by multiple teams all over your Git repositories - and now do a secret or key rotation...
+
+
+The TLDR; of most (recent) articles and GitHub discussions I distilled for me is: Use an external secret store and connect that one to your ArgoCD managed cluster. With an external secret store you get key rotation, support for serving secrets as symbolic references, usage audits and so on. Even in the case of secret or key compromisation you mostly get proven mitigations paths. 
+
+
+
+### Which tooling to integrate ArgoCD with the external secret store
+
+There is a huge list of possible plugins or operators helping to integrate your ArgoCD managed cluster with an external secret store. You can for example have a look onto [the list featured in the Argo docs](https://argo-cd.readthedocs.io/en/stable/operator-manual/secret-management/). I had a look on some promising candidates:
+
+A lightweight solution could be https://github.com/argoproj-labs/argocd-vault-plugin / https://argocd-vault-plugin.readthedocs.io/en/stable/. It supports multiple backends like AWS Secrets Manager, Azure Key Vault, Hashicorp Vault etc. But the installation [isn't that lightweight](https://argocd-vault-plugin.readthedocs.io/en/stable/installation/), because we need to download the Argo Vault Plugin in a volume and inject it into the `argocd-repo-server` ([although there are pre-build Kustomize manifests available](https://github.com/argoproj-labs/argocd-vault-plugin/blob/main/manifests/cmp-configmap)) by creating a custom argocd-repo-server image with the plugin and supporting tools pre-installed... Also [a newer sidecar option](https://argocd-vault-plugin.readthedocs.io/en/stable/installation/) is available, which nevertheless has [it's own caveats](https://argocd-vault-plugin.readthedocs.io/en/stable/usage/#running-argocd-vault-plugin-in-a-sidecar-container).
+
+There's also [Hashicorps own Vault Agent](https://developer.hashicorp.com/vault/docs/agent-and-proxy/agent) and the [Secrets Store CSI Driver](https://github.com/kubernetes-sigs/secrets-store-csi-driver), who both handle secrets without the need for Kubernetes Secrets. The first works with a per-pod based sidecar approach to connect to Vault via the agent and the latter uses the Container Storage Interface.
+
+Both look nice, but I found the following the most promising solution right now: The [External Secrets Operator](https://external-secrets.io/latest/). Featuring also a lot of GitHub stars External Secrets simply creates a Kubernetes Secret for each external secret. According to the docs:
+
+> "ExternalSecret, SecretStore and ClusterSecretStore that provide a user-friendly abstraction for the external API that stores and manages the lifecycle of the secrets for you."
+
+And what's also promising, [the community seems to be growing rapidly](https://github.com/external-secrets/external-secrets):
+
+> "Multiple people and organizations are joining efforts to create a single External Secrets solution based on existing projects."
+
+
+
+### Using External Secrets together with HashiCorp Vault (HCP service)
+
+Maybe [Hashicorp Vault](https://www.vaultproject.io/) would be a great idea?! But setting it up and maintaining Vault isn't the easiest thing to do. But luckily for this example there's [a hosted Hashicorp Vault service](https://portal.cloud.hashicorp.com/services/secrets) as part of the [Hashicorp Cloud Platform (HCP)](https://www.hashicorp.com/cloud). And as I like to show solutions that are fully cromprehensible - ideally without a creditcard - there's a free plan for managing 25 secrets.
+
+So let's create our first secret in HCP. If you haven't already done so sign up to HCP at https://portal.cloud.hashicorp.com/sign-in (e.g. with your GitHub account). Then click on `Vault Secrets` on the left navigation bar and you're already there:
+
+![](docs/hcp-secrets-dashboard.png)
+
+
+Now let's integrate Vault with ArgoCD. [As stated by the docs](https://argo-cd.readthedocs.io/en/stable/operator-manual/secret-management/), there are a few options.
+
+
+
+
+
+
+
+
+https://external-secrets.io/latest/provider/hashicorp-vault/
+
+
+
 
 
 # Links
@@ -691,3 +747,5 @@ https://argo-cd.readthedocs.io/en/stable/operator-manual/cluster-bootstrapping/#
 https://argo-cd.readthedocs.io/en/stable/operator-manual/applicationset/
 
 https://github.com/argoproj/argo-cd/discussions/11892
+
+https://github.com/christianh814/golist
