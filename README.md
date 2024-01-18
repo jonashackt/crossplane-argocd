@@ -656,7 +656,7 @@ TODO: Insert why here :) GitOps Pull instead of Push...
 After reading through lot's of "How to manage Secrets with GitOps articles" (like [this](https://www.redhat.com/en/blog/a-guide-to-secrets-management-with-gitops-and-kubernetes), [this](https://betterprogramming.pub/why-you-should-avoid-sealed-secrets-in-your-gitops-deployment-e50131d360dd) and [this](https://akuity.io/blog/how-to-manage-kubernetes-secrets-gitops ) to name a few), I found that there's currently no widly accepted way of doing it. But there are some recommendations. E.g. checking Secrets into Git (although encrypted) using [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) or [SOPS](https://github.com/getsops/sops)/[KSOPS](https://github.com/viaduct-ai/kustomize-sops) might seem like the kind of easiest solution in the first place. But they have their own caveats in the long therm. Think of multiple secrets defined in multiple projects used by multiple teams all over your Git repositories - and now do a secret or key rotation...
 
 
-The TLDR; of most (recent) articles and GitHub discussions I distilled for me is: Use an external secret store and connect that one to your ArgoCD managed cluster. With an external secret store you get key rotation, support for serving secrets as symbolic references, usage audits and so on. Even in the case of secret or key compromisation you mostly get proven mitigations paths. 
+The TLDR; of most (recent) articles and [GitHub discussions](https://github.com/argoproj/argo-cd/issues/1364) I distilled for me is: Use an external secret store and connect that one to your ArgoCD managed cluster. With an external secret store you get key rotation, support for serving secrets as symbolic references, usage audits and so on. Even in the case of secret or key compromisation you mostly get proven mitigations paths. 
 
 
 
@@ -668,7 +668,7 @@ A lightweight solution could be https://github.com/argoproj-labs/argocd-vault-pl
 
 There's also [Hashicorps own Vault Agent](https://developer.hashicorp.com/vault/docs/agent-and-proxy/agent) and the [Secrets Store CSI Driver](https://github.com/kubernetes-sigs/secrets-store-csi-driver), who both handle secrets without the need for Kubernetes Secrets. The first works with a per-pod based sidecar approach to connect to Vault via the agent and the latter uses the Container Storage Interface.
 
-Both look nice, but I found the following the most promising solution right now: The [External Secrets Operator](https://external-secrets.io/latest/). Featuring also a lot of GitHub stars External Secrets simply creates a Kubernetes Secret for each external secret. According to the docs:
+Both look nice, but I found the following the most promising solution right now: The [External Secrets Operator (ESO)](https://external-secrets.io/latest/). Featuring also a lot of GitHub stars External Secrets simply creates a Kubernetes Secret for each external secret. According to the docs:
 
 > "ExternalSecret, SecretStore and ClusterSecretStore that provide a user-friendly abstraction for the external API that stores and manages the lifecycle of the secrets for you."
 
@@ -678,7 +678,7 @@ And what's also promising, [the community seems to be growing rapidly](https://g
 
 
 
-### Using External Secrets together with HashiCorp Vault (HCP service)
+### Using External Secrets together with HashiCorp Vault (HCP Service)
 
 Maybe [Hashicorp Vault](https://www.vaultproject.io/) would be a great idea?! But setting it up and maintaining Vault isn't the easiest thing to do. But luckily for this example there's [a hosted Hashicorp Vault service](https://portal.cloud.hashicorp.com/services/secrets) as part of the [Hashicorp Cloud Platform (HCP)](https://www.hashicorp.com/cloud). And as I like to show solutions that are fully cromprehensible - ideally without a creditcard - there's a free plan for managing 25 secrets.
 
@@ -687,16 +687,67 @@ So let's create our first secret in HCP. If you haven't already done so sign up 
 ![](docs/hcp-secrets-dashboard.png)
 
 
-Now let's integrate Vault with ArgoCD. [As stated by the docs](https://argo-cd.readthedocs.io/en/stable/operator-manual/secret-management/), there are a few options.
 
-
-
-
-
-
-
+### Integrate ArgoCD with HashiCorp Vault HCP Service using External Secrets Operator (ESO)
 
 https://external-secrets.io/latest/provider/hashicorp-vault/
+
+https://colinwilson.uk/2022/08/22/secrets-management-with-external-secrets-argo-cd-and-gitops/
+
+
+Installing External Secrets Operator in a GitOps fashion & have updates managed by Renovate, we can use the method already applied to Crossplane and explained in https://stackoverflow.com/a/71765472/4964553. Therefore we create a simple Helm chart at [`external-secrets/Chart.yaml`](external-secrets/Chart.yaml):
+
+```yaml
+apiVersion: v2
+type: application
+name: external-secrets
+version: 0.0.0 # unused
+appVersion: 0.0.0 # unused
+dependencies:
+  - name: external-secrets
+    repository: https://charts.external-secrets.io
+    version: 0.9.11
+```
+
+Now telling ArgoCD where to find our simple external-secrets Helm Chart, we again use Argo's `Application` manifest in [argocd/applications/external-secrets.yaml](argocd/applications/crossplane-core.yaml):
+
+```yaml
+# The ArgoCD Application for external-secrets-operator
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-secrets
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: HEAD
+    path: external-secrets
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets
+  syncPolicy:
+    automated:
+      prune: true    
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 1
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+We define the SyncWave to deploy external-secrets before every other Crossplane component via `annotations: argocd.argoproj.io/sync-wave: "-1"`.
+
+Just for checking if it works, we can use a `kubectl apply -f argocd/applications/external-secrets.yaml` to apply it to our cluster.
 
 
 
@@ -723,13 +774,6 @@ https://codefresh.io/blog/using-gitops-infrastructure-applications-crossplane-ar
 Configuration drift in Tf: Terraform horror stories about incomplete/invalid state https://www.youtube.com/watch?v=ix0Tw8uinWs
 
 
-## GitOps & Secrets
-
-https://www.redhat.com/en/blog/a-guide-to-secrets-management-with-gitops-and-kubernetes
-
-https://betterprogramming.pub/why-you-should-avoid-sealed-secrets-in-your-gitops-deployment-e50131d360dd
-
-https://akuity.io/blog/how-to-manage-kubernetes-secrets-gitops 
 
 
 
