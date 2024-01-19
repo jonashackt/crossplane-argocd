@@ -899,6 +899,10 @@ spec:
 
 Although we created a `CREDS` secret in Doppler, we need to use `path: creds` here - since we use the ClusterSecretStore name transformer `lower-snake`! Otherwise we get reconcile errors, since the `ExternalSecret` looks for the uppercase path!
 
+Our ClusterSecretStore and ExternalSecrets deployment in Argo looks like this:
+
+![](docs/external-secrets-configuration-in-argo.png)
+
 
 
 
