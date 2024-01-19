@@ -787,11 +787,17 @@ Just for checking if it works, we can use a `kubectl apply -f argocd/application
 
 ##### Create ClusterSecretStore that manages access to Vault HCP
 
-As [the docs state](https://external-secrets.io/latest/introduction/overview/#clustersecretstore):
+https://external-secrets.io/latest/provider/doppler/#authentication
+
+https://external-secrets.io/latest/introduction/overview/#secretstore
+
+> The idea behind the `SecretStore` resource is to separate concerns of authentication/access and the actual Secret and configuration needed for workloads. The ExternalSecret specifies what to fetch, the SecretStore specifies how to access. 
+
+In this project I opted for the similar `ClusterSecretStore`. As [the docs state](https://external-secrets.io/latest/introduction/overview/#clustersecretstore):
 
 > "The ClusterSecretStore is a global, cluster-wide SecretStore that can be referenced from all namespaces. You can use it to provide a central gateway to your secret provider."
 
-Sounds like a good fit for our setup. But you can also opt for [the namespaced `SecretStore`](https://external-secrets.io/latest/introduction/overview/#secretstore) too.
+Sounds like a good fit for our setup. But you can also opt for [the namespaced `SecretStore`](https://external-secrets.io/latest/introduction/overview/#secretstore) too. Our ClusterSecretStore reside here [`external-secrets/config/cluster-secret-store.yaml`](external-secrets/config/cluster-secret-store.yaml):
 
 ```yaml
 apiVersion: external-secrets.io/v1beta1
@@ -807,6 +813,9 @@ spec:
             name: doppler-token-auth-api
             key: dopplerToken
             namespace: default
+      # using a key name transformer https://external-secrets.io/latest/provider/doppler/#5-name-transformer
+      # to get the lower case key name (as in the Crossplane docs)
+      nameTransformer: lower-snake
 ```
 
 Don't forget to configure a `namespace` for the `doppler-token-auth-api` Secret we created earlier. Otherwise we'll run into errors like:
@@ -814,6 +823,16 @@ Don't forget to configure a `namespace` for the `doppler-token-auth-api` Secret 
 ```shell
 admission webhook "validate.clustersecretstore.external-secrets.io" denied the request: invalid store: cluster scope requires namespace (retried 1 times).
 ```
+
+Additionally we use the name transformer `lower-snake` here - since we want External Secrets Operator to create a Secret that's similar to the one mentioned in the Crossplane docs (if you decode it):
+
+```shell
+creds: |+
+[default] 
+aws_access_key_id = yourAccessKeyIdHere
+aws_secret_access_key = yourSecretAccessKeyHere
+```
+
 
 We also need to create a ArgoCD Application so that Argo will deploy everything for us :) Therefore I created [`argocd/applications/external-secrets-config.yaml`](argocd/applications/external-secrets-config.yaml):
 
@@ -852,10 +871,58 @@ spec:
 ```
 
 
+##### Create ExternalSecret to access AWS credentials
+
+https://external-secrets.io/latest/introduction/overview/#externalsecret
+
+https://external-secrets.io/latest/provider/doppler/#use-cases
+
+As we already defined how the external secret store (Doppler) could be accessed (using our `ClusterSecretStore` CRD) should now specify which secrets to fetch using the `ExternalSecret` CRD. Therefore let's create a [`external-secrets/config/external-secret.yaml`](external-secrets/config/external-secret.yaml):
+
+```yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: auth-api-db-url
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: doppler-auth-api
+
+  target:
+    name: aws-secrets-from-doppler
+
+  dataFrom:
+    - find:
+        path: creds
+```
+
+Although we created a `CREDS` secret in Doppler, we need to use `path: creds` here - since we use the ClusterSecretStore name transformer `lower-snake`! Otherwise we get reconcile errors, since the `ExternalSecret` looks for the uppercase path!
 
 
 
 
+##### Point the Crossplane AWS ProviderConfig to our External Secret created Secret from Doppler
+
+Therefore we need to change our [`upbound/provider-aws-s3/config/provider-config-aws.yaml`](upbound/provider-aws-s3/config/provider-config-aws.yaml) to use another Secret name and namespace:
+
+```yaml
+apiVersion: aws.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+  # The ProviderConfig needs to be deployed after the Provider (which has sync-wave: "0")
+  # So we use Argo's SyncWaves here https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: external-secrets
+      name: aws-secrets-from-doppler
+      key: creds
+```
 
 
 
