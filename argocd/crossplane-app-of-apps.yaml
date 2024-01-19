@@ -10,9 +10,9 @@ metadata:
 spec:
   project: default
   source:
-    path: argocd/applications
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
+    path: argocd/applications
   destination:
     server: https://kubernetes.default.svc
     namespace: crossplane-system

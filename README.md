@@ -492,9 +492,9 @@ metadata:
 spec:
   project: default
   source:
-    path: argocd/applications
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
+    path: argocd/applications
   destination:
     server: https://kubernetes.default.svc
     namespace: crossplane-system
@@ -697,20 +697,33 @@ Doppler automatically creates well known environments for us: development, stagi
 Don't forget so click on `save`. Neatly Doppler already anticipates that the secrets created in the dev environment will also be needed in staging and production.
 
 
+### Create Service Token in Doppler project environment
+
+[As stated in the External Secrets docs](https://external-secrets.io/latest/provider/doppler/), we need to create a Doppler Service Token in order to be albe to connect to Doppler later on.
+
+In Doppler Service Tokens are created on project level - inside a specific environment, where we already created our secrets. As I created my secrets in the `dev` environment, I create the Service Token also there. Simply head over to your Doppler project, select the environment you created your secrets in and click on `Access`. Here you should find a button called `+ Generate` to create a new Service Token. Click the button and create a Service Token with `read` access and no expiration and copy it somewhere locally.
+
+![](docs/doppler-project-service-token.png)
 
 
 
-### Integrate ArgoCD with Doppler using External Secrets Operator (ESO)
 
-https://external-secrets.io/latest/introduction/getting-started/
+##### Create Kubernetes Secret with the Doppler Service Token
 
-https://external-secrets.io/latest/provider/hashicorp-vault/
+In order to be able to let the External Secrets Operator access Doppler, we need to create a Kubernetes `Secret` containing the Doppler Service Token:
 
-https://colinwilson.uk/2022/08/22/secrets-management-with-external-secrets-argo-cd-and-gitops/
+```shell
+kubectl create secret generic \
+    doppler-token-auth-api \
+    --from-literal dopplerToken="dp.st.xxxx"
+```
+
 
 
 
 ##### Install External Secrets Operator as ArgoCD Application
+
+https://external-secrets.io/latest/introduction/getting-started/
 
 Installing External Secrets Operator in a GitOps fashion & have updates managed by Renovate, we can use the method already applied to Crossplane and explained in https://stackoverflow.com/a/71765472/4964553. Therefore we create a simple Helm chart at [`external-secrets/Chart.yaml`](external-secrets/Chart.yaml):
 
@@ -726,7 +739,7 @@ dependencies:
     version: 0.9.11
 ```
 
-Now telling ArgoCD where to find our simple external-secrets Helm Chart, we again use Argo's `Application` manifest in [argocd/applications/external-secrets.yaml](argocd/applications/crossplane-core.yaml):
+Now telling ArgoCD where to find our simple external-secrets Helm Chart, we again use Argo's `Application` manifest in [argocd/applications/external-secrets.yaml](argocd/applications/external-secrets.yaml):
 
 ```yaml
 # The ArgoCD Application for external-secrets-operator
@@ -735,6 +748,82 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: external-secrets
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: HEAD
+    path: external-secrets/install
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets
+  syncPolicy:
+    automated:
+      prune: true    
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 1
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+We define the SyncWave to deploy external-secrets before every other Crossplane component via `annotations: argocd.argoproj.io/sync-wave: "-1"`.
+
+Just for checking if it works, we can use a `kubectl apply -f argocd/applications/external-secrets.yaml` to apply it to our cluster. If everything went correctly, there should be a new ArgoCD Application featuring a bunch of CRDs, some roles and three Pods: `external-secrets`, `external-secrets-webhook` and `external-secrets-cert-controller`:
+
+![](docs/external-secrets-argo-app.png)
+
+
+
+
+
+##### Create ClusterSecretStore that manages access to Vault HCP
+
+As [the docs state](https://external-secrets.io/latest/introduction/overview/#clustersecretstore):
+
+> "The ClusterSecretStore is a global, cluster-wide SecretStore that can be referenced from all namespaces. You can use it to provide a central gateway to your secret provider."
+
+Sounds like a good fit for our setup. But you can also opt for [the namespaced `SecretStore`](https://external-secrets.io/latest/introduction/overview/#secretstore) too.
+
+```yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ClusterSecretStore
+metadata:
+  name: doppler-auth-api
+spec:
+  provider:
+    doppler:
+      auth:
+        secretRef:
+          dopplerToken:
+            name: doppler-token-auth-api
+            key: dopplerToken
+            namespace: default
+```
+
+Don't forget to configure a `namespace` for the `doppler-token-auth-api` Secret we created earlier. Otherwise we'll run into errors like:
+
+```shell
+admission webhook "validate.clustersecretstore.external-secrets.io" denied the request: invalid store: cluster scope requires namespace (retried 1 times).
+```
+
+We also need to create a ArgoCD Application so that Argo will deploy everything for us :) Therefore I created [`argocd/applications/external-secrets-config.yaml`](argocd/applications/external-secrets-config.yaml):
+
+```yaml
+# The ArgoCD Application for external-secrets-operator
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-secrets-config
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -762,41 +851,9 @@ spec:
         maxDuration: 1m
 ```
 
-We define the SyncWave to deploy external-secrets before every other Crossplane component via `annotations: argocd.argoproj.io/sync-wave: "-1"`.
-
-Just for checking if it works, we can use a `kubectl apply -f argocd/applications/external-secrets.yaml` to apply it to our cluster. If everything went correctly, there should be a new ArgoCD Application featuring a bunch of CRDs, some roles and three Pods: `external-secrets`, `external-secrets-webhook` and `external-secrets-cert-controller`:
-
-![](docs/external-secrets-argo-app.png)
 
 
 
-##### Create ClusterSecretStore that manages access to Vault HCP
-
-As [the docs state](https://external-secrets.io/latest/introduction/overview/#clustersecretstore):
-
-> "The ClusterSecretStore is a global, cluster-wide SecretStore that can be referenced from all namespaces. You can use it to provide a central gateway to your secret provider."
-
-Sounds like a good fit for our setup. But you can also opt for [the namespaced `SecretStore`](https://external-secrets.io/latest/introduction/overview/#secretstore) too.
-
-```yaml
-apiVersion: external-secrets.io/v1beta1
-kind: ClusterSecretStore
-metadata:
-  name: vault-backend
-spec:
-  provider:
-    vault:
-      server: "http://vault.local:8200"
-      path: "secret"
-      version: "v2"
-      auth:
-        # points to a secret that contains a vault token
-        # https://www.vaultproject.io/docs/auth/token
-        tokenSecretRef:
-          name: "vault-token"
-          key: "token"
-          namespace: external-secrets
-```
 
 
 
