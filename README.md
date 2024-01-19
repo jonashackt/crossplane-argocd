@@ -678,22 +678,39 @@ And what's also promising, [the community seems to be growing rapidly](https://g
 
 
 
-### Using External Secrets together with HashiCorp Vault (HCP Service)
+### Using External Secrets together with Doppler
 
-Maybe [Hashicorp Vault](https://www.vaultproject.io/) would be a great idea?! But setting it up and maintaining Vault isn't the easiest thing to do. But luckily for this example there's [a hosted Hashicorp Vault service](https://portal.cloud.hashicorp.com/services/secrets) as part of the [Hashicorp Cloud Platform (HCP)](https://www.hashicorp.com/cloud). And as I like to show solutions that are fully cromprehensible - ideally without a creditcard - there's a free plan for managing 25 secrets.
+The External Secrets Operator supports a multitude of tools for secret management! Just have a look at the docs & [you'll see more than 20 tools supported](https://external-secrets.io/latest/provider/aws-secrets-manager/), featuring the well known AWS Secretes Manager, Azure Key Vault, Hashicorp Vault, Akeyless and so on. 
 
-So let's create our first secret in HCP. If you haven't already done so sign up to HCP at https://portal.cloud.hashicorp.com/sign-in (e.g. with your GitHub account). Then click on `Vault Secrets` on the left navigation bar and you're already there:
+And as I like to show solutions that are fully cromprehensible - ideally without a creditcard - I was on the lookout for a tool, that had a small free plan. But without the need to selfhost the solution, since that would be out of scope for this project. At first glance I thought that [Hashicorp's Vault Secrets](https://developer.hashicorp.com/hcp/docs/vault-secrets) as part of the Hashicorp Cloud Platform (HCP) would be a great choice since so many projects love and use Vault. But sadly External Secrets Operator currently doesn't support HCP Vault Secrets and I would have been forced to [switch to Hashicorp Vault Secrets Operator (VSO)](https://developer.hashicorp.com/hcp/docs/vault-secrets/integrations/kubernetes), which is for sure also an interesting project. But I wanted to stick with the External Secrets Operator since it's wide support for providers and it looks as it could develop into the defacto standard in external secrets integration in Kubernetes.
 
-![](docs/hcp-secrets-dashboard.png)
+So I thought the exact secret management tool I use in this case is not that important and I trust my readers that they will choose the provider that suites them the most. That beeing said I chose [Doppler](https://www.doppler.com/) with their [generous free Developer plan](https://www.doppler.com/pricing).
+
+So let's create our first secret in Doppler. If you haven't already done so sign up to HCP at https://dashboard.doppler.com/ (e.g. with your GitHub account). Then click on `Projects` on the left navigation bar and on the `+` to create a new project. In this example I named it according to this example project: `crossplane-argocd`.
+
+![](docs/doppler-project-stages.png)
+
+Doppler automatically creates well known environments for us: development, staging and production. To create a new Secret, choose a environment and click on `Add First Secret`. As we need the `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` available for our Crossplane AWS Provider, we need to create both secrets in Doppler:
+
+![](docs/doppler-aws-secrets.png)
+
+Don't forget so click on `save`. Neatly Doppler already anticipates that the secrets created in the dev environment will also be needed in staging and production.
 
 
 
-### Integrate ArgoCD with HashiCorp Vault HCP Service using External Secrets Operator (ESO)
+
+
+### Integrate ArgoCD with Doppler using External Secrets Operator (ESO)
+
+https://external-secrets.io/latest/introduction/getting-started/
 
 https://external-secrets.io/latest/provider/hashicorp-vault/
 
 https://colinwilson.uk/2022/08/22/secrets-management-with-external-secrets-argo-cd-and-gitops/
 
+
+
+##### Install External Secrets Operator as ArgoCD Application
 
 Installing External Secrets Operator in a GitOps fashion & have updates managed by Renovate, we can use the method already applied to Crossplane and explained in https://stackoverflow.com/a/71765472/4964553. Therefore we create a simple Helm chart at [`external-secrets/Chart.yaml`](external-secrets/Chart.yaml):
 
@@ -747,7 +764,43 @@ spec:
 
 We define the SyncWave to deploy external-secrets before every other Crossplane component via `annotations: argocd.argoproj.io/sync-wave: "-1"`.
 
-Just for checking if it works, we can use a `kubectl apply -f argocd/applications/external-secrets.yaml` to apply it to our cluster.
+Just for checking if it works, we can use a `kubectl apply -f argocd/applications/external-secrets.yaml` to apply it to our cluster. If everything went correctly, there should be a new ArgoCD Application featuring a bunch of CRDs, some roles and three Pods: `external-secrets`, `external-secrets-webhook` and `external-secrets-cert-controller`:
+
+![](docs/external-secrets-argo-app.png)
+
+
+
+##### Create ClusterSecretStore that manages access to Vault HCP
+
+As [the docs state](https://external-secrets.io/latest/introduction/overview/#clustersecretstore):
+
+> "The ClusterSecretStore is a global, cluster-wide SecretStore that can be referenced from all namespaces. You can use it to provide a central gateway to your secret provider."
+
+Sounds like a good fit for our setup. But you can also opt for [the namespaced `SecretStore`](https://external-secrets.io/latest/introduction/overview/#secretstore) too.
+
+```yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ClusterSecretStore
+metadata:
+  name: vault-backend
+spec:
+  provider:
+    vault:
+      server: "http://vault.local:8200"
+      path: "secret"
+      version: "v2"
+      auth:
+        # points to a secret that contains a vault token
+        # https://www.vaultproject.io/docs/auth/token
+        tokenSecretRef:
+          name: "vault-token"
+          key: "token"
+          namespace: external-secrets
+```
+
+
+
+
 
 
 
