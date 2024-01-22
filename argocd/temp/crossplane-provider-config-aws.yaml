@@ -1,23 +1,13 @@
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: aws.upbound.io/v1beta1
+kind: ProviderConfig
 metadata:
-  name: provider-config-aws
-  namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
+  name: default
   annotations:
     argocd.argoproj.io/sync-wave: "3"
 spec:
-  project: default
-  source:
-    repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: HEAD
-    path: upbound/provider-aws-s3/config
-  destination:
-    namespace: default
-    server: https://kubernetes.default.svc
-  # Using syncPolicy.automated here, otherwise the deployement of our Crossplane provider will fail with
-  # 'Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3'
-  syncPolicy:
-    automated: 
-      prune: true    
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: external-secrets
+      name: aws-secrets-from-doppler
+      key: creds
