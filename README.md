@@ -686,15 +686,25 @@ And as I like to show solutions that are fully cromprehensible - ideally without
 
 So I thought the exact secret management tool I use in this case is not that important and I trust my readers that they will choose the provider that suites them the most. That beeing said I chose [Doppler](https://www.doppler.com/) with their [generous free Developer plan](https://www.doppler.com/pricing).
 
-So let's create our first secret in Doppler. If you haven't already done so sign up to HCP at https://dashboard.doppler.com/ (e.g. with your GitHub account). Then click on `Projects` on the left navigation bar and on the `+` to create a new project. In this example I named it according to this example project: `crossplane-argocd`.
+So let's create our first secret in Doppler. If you haven't already done so sign up at https://dashboard.doppler.com (e.g. with your GitHub account). Then click on `Projects` on the left navigation bar and on the `+` to create a new project. In this example I named it according to this example project: `crossplane-argocd`.
 
 ![](docs/doppler-project-stages.png)
 
-Doppler automatically creates well known environments for us: development, staging and production. To create a new Secret, choose a environment and click on `Add First Secret`. As we need the `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` available for our Crossplane AWS Provider, we need to create both secrets in Doppler:
+Doppler automatically creates well known environments for us: development, staging and production. To create a new Secret, choose a environment and click on `Add First Secret`. Now give it the key `CREDS`. The value will be a multiline value. Just like [it is stated in the crossplane docs](https://docs.crossplane.io/latest/getting-started/provider-aws/#generate-an-aws-key-pair-file), we should have an `aws-creds.conf` file created already (that we don't want to check into source control):
 
-![](docs/doppler-aws-secrets.png)
+```shell
+echo "[default]
+aws_access_key_id = $(aws configure get aws_access_key_id)
+aws_secret_access_key = $(aws configure get aws_secret_access_key)
+" > aws-creds.conf
+```
 
-Don't forget so click on `save`. Neatly Doppler already anticipates that the secrets created in the dev environment will also be needed in staging and production.
+Copy the contents of the `aws-creds.conf` into the value field in Doppler. The Crossplane AWS Provider or rather it's ProviderConfig will later consume the secret just like it is as multiline text:
+
+![](docs/doppler-aws-creds-multiline.png)
+
+Don't forget so click on `save`. 
+
 
 
 ### Create Service Token in Doppler project environment
@@ -905,7 +915,26 @@ Our ClusterSecretStore and ExternalSecrets deployment in Argo looks like this:
 
 ![](docs/external-secrets-configuration-in-argo.png)
 
+But the deployment doesn't run flawless, although configured as `argocd.argoproj.io/sync-wave: "-1"` right AFTER the `external-secrets` Argo Application, which deployes the External Secrets components:
 
+```shell
+Failed sync attempt to 603cce3949c2a916f51f3917e87aa814698e5f92: one or more objects failed to apply, reason: Internal error occurred: failed calling webhook "validate.externalsecret.external-secrets.io": failed to call webhook: Post "https://external-secrets-webhook.external-secrets.svc:443/validate-external-secrets-io-v1beta1-externalsecret?timeout=5s": dial tcp 10.96.42.44:443: connect: connection refused,Internal error occurred: failed calling webhook "validate.clustersecretstore.external-secrets.io": failed to call webhook: Post "https://external-secrets-webhook.external-secrets.svc:443/validate-external-secrets-io-v1beta1-clustersecretstore?timeout=5s": dial tcp 10.96.42.44:443: connect: connection refused (retried 1 times).
+```
+
+It seems that our `external-secrets-webhook` isn't healthy already, but the `ClusterSecretStore` & the `ExternalSecret` already want to access the webhook. So we may need to wait for the `external-secrets-webhook` to be really available before we deploy our `external-secrets-config`?!
+
+Therefore let's give our `external-secrets-config` more `syncPolicy.retry.limit`:
+
+```yaml
+  syncPolicy:
+    ...
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
 
 
 ##### Point the Crossplane AWS ProviderConfig to our External Secret created Secret from Doppler
@@ -976,3 +1005,19 @@ https://argo-cd.readthedocs.io/en/stable/operator-manual/applicationset/
 https://github.com/argoproj/argo-cd/discussions/11892
 
 https://github.com/christianh814/golist
+
+
+
+## Crossplane producer of Secrets
+
+https://docs.crossplane.io/knowledge-base/integrations/vault-as-secret-store/
+
+> External Secret Stores are an alpha feature. They’re not recommended for production use. Crossplane disables External Secret Stores by default.
+
+https://github.com/crossplane/crossplane/blob/master/design/design-doc-external-secret-stores.md
+
+> storing sensitive information in external secret stores is a common practice. Since applications running on K8S need this information as well, it is also quite common to sync data from external secret stores to K8S. There are quite a few tools out there that are trying to resolve this exact same problem. **However, Crossplane, as a producer of infrastructure credentials, needs the opposite, which is storing sensitive information to external secret stores.**
+
+--> So this feature is NOT for retrieving secrets FROM external secret providers, BUT for storing secrets IN external secret providers!
+
+But the External Secrets Operator has also PushSecrets https://external-secrets.io/latest/api/pushsecret/ which seem to do the same
