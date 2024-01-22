@@ -749,7 +749,7 @@ dependencies:
     version: 0.9.11
 ```
 
-Now telling ArgoCD where to find our simple external-secrets Helm Chart, we again use Argo's `Application` manifest in [argocd/applications/external-secrets.yaml](argocd/applications/external-secrets.yaml):
+Now telling ArgoCD where to find our simple external-secrets Helm Chart, we again use Argo's `Application` manifest in [argocd/applications/external-secrets-operator.yaml](argocd/applications/external-secrets-operator.yaml):
 
 ```yaml
 # The ArgoCD Application for external-secrets-operator
@@ -757,12 +757,12 @@ Now telling ArgoCD where to find our simple external-secrets Helm Chart, we agai
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: external-secrets
+  name: external-secrets-operator
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
   annotations:
-    argocd.argoproj.io/sync-wave: "-2"
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   project: default
   source:
@@ -961,6 +961,65 @@ spec:
 
 
 
+##### Finally provisioning a Cloud resource with Crossplane and Argo
+
+Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`upbound/provider-aws/resources/bucket.yaml`](upbound/provider-aws/resources/bucket.yaml) features a super simply example:
+
+```yaml
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: crossplane-argocd-s3-bucket
+spec:
+  forProvider:
+    region: eu-central-1
+  providerConfigRef:
+    name: default
+```
+
+__TODO:__ Rename `argocd/applications` into `argocd/bootstrap` and the corresponding app-of-apps also into `crossplane-bootstrap` - since that's exactly what it is and does!
+
+
+Since we're using Argo, we should deploy our Bucket as Argo Application too. I created a new folder `argocd/crossplane-resources`
+here, since the Crossplane provisioned infrastructure may not automatically be part of the bootstrap App of Apps.
+
+So here's our Argo Application for all the Crossplane resources that may come: [`argocd/crossplane-resources/crossplane-managed-resources.yaml`](argocd/crossplane-resources/crossplane-managed-resources.yaml):
+
+```yaml
+# The ArgoCD Application for all Crossplane Managed Resources
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-managed-resources
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: HEAD
+    path: upbound/provider-aws/resources
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+Apply it with:
+
+```shell
+kubectl apply -f argocd/crossplane-resources/crossplane-managed-resources.yaml
+```
 
 
 
