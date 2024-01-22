@@ -660,7 +660,7 @@ The TLDR; of most (recent) articles and [GitHub discussions](https://github.com/
 
 
 
-### Which tooling to integrate ArgoCD with the external secret store
+## Which tooling to integrate ArgoCD with the external secret store
 
 There is a huge list of possible plugins or operators helping to integrate your ArgoCD managed cluster with an external secret store. You can for example have a look onto [the list featured in the Argo docs](https://argo-cd.readthedocs.io/en/stable/operator-manual/secret-management/). I had a look on some promising candidates:
 
@@ -678,13 +678,17 @@ And what's also promising, [the community seems to be growing rapidly](https://g
 
 
 
-### Using External Secrets together with Doppler
+## Using External Secrets together with Doppler
 
 The External Secrets Operator supports a multitude of tools for secret management! Just have a look at the docs & [you'll see more than 20 tools supported](https://external-secrets.io/latest/provider/aws-secrets-manager/), featuring the well known AWS Secretes Manager, Azure Key Vault, Hashicorp Vault, Akeyless and so on. 
 
 And as I like to show solutions that are fully cromprehensible - ideally without a creditcard - I was on the lookout for a tool, that had a small free plan. But without the need to selfhost the solution, since that would be out of scope for this project. At first glance I thought that [Hashicorp's Vault Secrets](https://developer.hashicorp.com/hcp/docs/vault-secrets) as part of the Hashicorp Cloud Platform (HCP) would be a great choice since so many projects love and use Vault. But sadly External Secrets Operator currently doesn't support HCP Vault Secrets and I would have been forced to [switch to Hashicorp Vault Secrets Operator (VSO)](https://developer.hashicorp.com/hcp/docs/vault-secrets/integrations/kubernetes), which is for sure also an interesting project. But I wanted to stick with the External Secrets Operator since it's wide support for providers and it looks as it could develop into the defacto standard in external secrets integration in Kubernetes.
 
 So I thought the exact secret management tool I use in this case is not that important and I trust my readers that they will choose the provider that suites them the most. That beeing said I chose [Doppler](https://www.doppler.com/) with their [generous free Developer plan](https://www.doppler.com/pricing).
+
+
+
+### Create multiline Secret in Doppler
 
 So let's create our first secret in Doppler. If you haven't already done so sign up at https://dashboard.doppler.com (e.g. with your GitHub account). Then click on `Projects` on the left navigation bar and on the `+` to create a new project. In this example I named it according to this example project: `crossplane-argocd`.
 
@@ -718,7 +722,7 @@ In Doppler Service Tokens are created on project level - inside a specific envir
 
 
 
-##### Create Kubernetes Secret with the Doppler Service Token
+### Create Kubernetes Secret with the Doppler Service Token
 
 In order to be able to let the External Secrets Operator access Doppler, we need to create a Kubernetes `Secret` containing the Doppler Service Token:
 
@@ -731,7 +735,7 @@ kubectl create secret generic \
 
 
 
-##### Install External Secrets Operator as ArgoCD Application
+### Install External Secrets Operator as ArgoCD Application
 
 https://external-secrets.io/latest/introduction/getting-started/
 
@@ -795,7 +799,7 @@ Just for checking if it works, we can use a `kubectl apply -f argocd/application
 
 
 
-##### Create ClusterSecretStore that manages access to Vault HCP
+### Create ClusterSecretStore that manages access to Doppler
 
 https://external-secrets.io/latest/provider/doppler/#authentication
 
@@ -844,44 +848,9 @@ aws_secret_access_key = yourSecretAccessKeyHere
 ```
 
 
-We also need to create a ArgoCD Application so that Argo will deploy everything for us :) Therefore I created [`argocd/applications/external-secrets-config.yaml`](argocd/applications/external-secrets-config.yaml):
-
-```yaml
-# The ArgoCD Application for external-secrets-operator
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: external-secrets-config
-  namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-  annotations:
-    argocd.argoproj.io/sync-wave: "-1"
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: HEAD
-    path: external-secrets
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: external-secrets
-  syncPolicy:
-    automated:
-      prune: true    
-    syncOptions:
-    - CreateNamespace=true
-    retry:
-      limit: 1
-      backoff:
-        duration: 5s 
-        factor: 2 
-        maxDuration: 1m
-```
 
 
-##### Create ExternalSecret to access AWS credentials
+### Create ExternalSecret to access AWS credentials
 
 https://external-secrets.io/latest/introduction/overview/#externalsecret
 
@@ -911,6 +880,44 @@ spec:
 
 Although we created a `CREDS` secret in Doppler, we need to use `path: creds` here - since we use the ClusterSecretStore name transformer `lower-snake`! Otherwise we get reconcile errors, since the `ExternalSecret` looks for the uppercase path!
 
+
+We also need to create a ArgoCD Application so that Argo will deploy both `ClusterSecretStore` and `ExternalSecret` for us :) Therefore I created [`argocd/applications/external-secrets-config.yaml`](argocd/applications/external-secrets-config.yaml):
+
+```yaml
+# The ArgoCD Application for external-secrets-operator
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-secrets-config
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: HEAD
+    path: external-secrets
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets
+  syncPolicy:
+    automated:
+      prune: true    
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 1
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+
 Our ClusterSecretStore and ExternalSecrets deployment in Argo looks like this:
 
 ![](docs/external-secrets-configuration-in-argo.png)
@@ -937,19 +944,15 @@ Therefore let's give our `external-secrets-config` more `syncPolicy.retry.limit`
 ```
 
 
-##### Point the Crossplane AWS ProviderConfig to our External Secret created Secret from Doppler
+### Point the Crossplane AWS ProviderConfig to our External Secret created Secret from Doppler
 
-Therefore we need to change our [`upbound/provider-aws-s3/config/provider-config-aws.yaml`](upbound/provider-aws-s3/config/provider-config-aws.yaml) to use another Secret name and namespace:
+Therefore we need to change our [`upbound/provider-aws-s3/provider/provider-config-aws.yaml`](upbound/provider-aws-s3/provider/provider-config-aws.yaml) to use another Secret name and namespace:
 
 ```yaml
 apiVersion: aws.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
-  # The ProviderConfig needs to be deployed after the Provider (which has sync-wave: "0")
-  # So we use Argo's SyncWaves here https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
 spec:
   credentials:
     source: Secret
@@ -959,9 +962,20 @@ spec:
       key: creds
 ```
 
+With this final piece our setup should be complete to be able to provision some infrastructure with ArgoCD and Crossplane!
+
+Here are all components together we deployed so far using Argo:
+
+![](docs/bootstrap-finalized-argo-crossplane-eso.png)
 
 
-##### Finally provisioning a Cloud resource with Crossplane and Argo
+
+
+
+
+
+
+# Finally provisioning Cloud resources with Crossplane and Argo
 
 Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`upbound/provider-aws/resources/bucket.yaml`](upbound/provider-aws/resources/bucket.yaml) features a super simply example:
 
