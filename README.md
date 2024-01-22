@@ -971,10 +971,6 @@ Here are all components together we deployed so far using Argo:
 
 
 
-
-
-
-
 # Finally provisioning Cloud resources with Crossplane and Argo
 
 Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`upbound/provider-aws/resources/bucket.yaml`](upbound/provider-aws/resources/bucket.yaml) features a super simply example:
@@ -1034,6 +1030,16 @@ Apply it with:
 ```shell
 kubectl apply -f argocd/crossplane-resources/crossplane-managed-resources.yaml
 ```
+
+If everything went fine, the Argo app should look `Healthy` like this:
+
+![](docs/first-s3-bucket-provisioned-with-argo-crossplane.png)
+
+And inside the AWS console, there should be a new S3 Bucket provisioned:
+
+![](docs/aws-console-s3-bucket-provisioned.png)
+
+
 
 
 
