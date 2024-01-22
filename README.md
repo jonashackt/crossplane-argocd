@@ -892,6 +892,8 @@ spec:
   target:
     name: aws-secrets-from-doppler
 
+  # as we use a lower case key name transformer in our ClusterSecretStore
+  # we need to access our 'CREDS' key in Doppler as 'creds'
   dataFrom:
     - find:
         path: creds
