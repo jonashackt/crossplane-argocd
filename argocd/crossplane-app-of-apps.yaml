@@ -22,9 +22,7 @@ spec:
     syncOptions:
     - CreateNamespace=true
     retry:
-      # Using limit 5, so that the (Cluster)SecretStore & ExternalSecrets can "wait" (via retry) for the external-secrets-webhook to be deployed
-      # and not to run into 'failed to call webhook: Post "https://external-secrets-webhook.external-secrets.svc:443/validate-external-secrets-io-v1beta1-externalsecret?timeout=5s": dial tcp 10.96.42.44:443: connect: connection refused'
-      limit: 5
+      limit: 1
       backoff:
         duration: 5s 
         factor: 2 
