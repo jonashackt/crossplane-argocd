@@ -2,10 +2,6 @@ apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
   name: provider-aws-s3
-  # The Provider needs to be deployed before the ProviderConfig (which has sync-wave: "1")
-  # So we use Argo's SyncWaves here https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
-  annotations:
-    argocd.argoproj.io/sync-wave: "-1"
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-s3:v0.46.0
   packagePullPolicy: Always

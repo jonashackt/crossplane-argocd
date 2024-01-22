@@ -2,10 +2,6 @@ apiVersion: aws.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
-  # The ProviderConfig needs to be deployed after the Provider (which has sync-wave: "0")
-  # So we use Argo's SyncWaves here https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
 spec:
   credentials:
     source: Secret
