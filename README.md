@@ -7,7 +7,7 @@ Example project showing how to use the crossplane together with ArgoCD
 
 > This project is based on the crossplane only repository https://github.com/jonashackt/crossplane-aws-azure, where the basics about crossplane.io are explained in detail - incl. how to provision to AWS and Azure.
 
-__The idea is "simple": Why not treat infrastructure deployments/provisioning the same way as appliaction deployment?!__ An ideal combination would be crossplane as control plane framework, which manages infrastructure through the Kubernetes api together with ArgoCD as [GitOps](https://www.gitops.tech/) framework to have everything in sync with our version control system.
+__The idea is "simple": Why not treat infrastructure deployments/provisioning the same way as application deployment?!__ An ideal combination would be crossplane as control plane framework, which manages infrastructure through the Kubernetes api together with ArgoCD as [GitOps](https://www.gitops.tech/) framework to have everything in sync with our version control system.
 
 
 ### Prerequisites: a management cluster for ArgoCD and crossplane
