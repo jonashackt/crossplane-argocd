@@ -433,6 +433,31 @@ We finally managed to let Argo deploy the Crossplane core components together wi
 
 
 
+## Provider and ProviderConfig in one directory / Argo Application
+
+What really drove me nuts was the fact that I needed 2 separate ArgoCD applications for Crossplane's Provider: The Provider itself and the ProviderConfig, where the latter is exactly one single manifest which only configures the Provider where to find it's secrets.
+
+But after digging deeper into Argo's deployment mechanisms, Syncwaves and syncpolicies, I found a way how to get rid of the second Argo Application just for the `provider-config-aws`. 
+
+I simply used `syncPolicy:retry:limit: 5`, so that the `Provider` has the chance to deploy it's CRDs (together with the `ProviderConfig` type), in order the `ProviderConfig` can be deployed successfully. It's all just in [`argocd/applications/crossplane-provider-aws.yaml`](argocd/applications/crossplane-provider-aws.yaml):
+
+```yaml
+  syncPolicy:
+    ... 
+    retry:
+      # Using limit 5, so that the ProviderConfig can "wait" (via retry) for the Provider and it's CRDs to be deployed
+      # and not to run into 'The Kubernetes API could not find aws.upbound.io/ProviderConfig for requested resource default/default.'
+      limit: 5
+      ...
+```
+
+Our Application overview becomes much cleaner and the detail of the `provider-aws` now shows the `default` providerconfig as a second item:
+
+![](docs/provider-aws-provider-config-one-argo-application.png)
+
+
+
+
 # Using ArgoCD's AppOfApps pattern to deploy Crossplane components
 
 ### Why our current setup is sub optimal
@@ -557,7 +582,7 @@ Now if we have a look into `crossplane` App of Apps we see all the needed compon
 
 
 
-# Doing it all with GitHub Actions
+## Doing it all with GitHub Actions
 
 Ok, enough theory :)) Let's create a pipeline that shows stuff works. Let's introduce a [.github/workflows/provision-aws.yml](.github/workflows/provision-aws.yml):
 
@@ -641,6 +666,93 @@ Be sure to create both `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` configure
 ![github-actions-secrets](docs/github-actions-secrets.png)
 
 Also make sure to have your `Default region` configured as a `env:` variable.
+
+
+
+
+
+## Finally provisioning Cloud resources with Crossplane and Argo
+
+Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`upbound/provider-aws/resources/bucket.yaml`](upbound/provider-aws/resources/bucket.yaml) features a super simply example:
+
+```yaml
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: crossplane-argocd-s3-bucket
+spec:
+  forProvider:
+    region: eu-central-1
+  providerConfigRef:
+    name: default
+```
+
+__TODO:__ Rename `argocd/applications` into `argocd/bootstrap` and the corresponding app-of-apps also into `crossplane-bootstrap` - since that's exactly what it is and does!
+
+
+Since we're using Argo, we should deploy our Bucket as Argo Application too. I created a new folder `argocd/crossplane-resources`
+here, since the Crossplane provisioned infrastructure may not automatically be part of the bootstrap App of Apps.
+
+So here's our Argo Application for all the Crossplane resources that may come: [`argocd/crossplane-resources/crossplane-managed-resources.yaml`](argocd/crossplane-resources/crossplane-managed-resources.yaml):
+
+```yaml
+# The ArgoCD Application for all Crossplane Managed Resources
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-managed-resources
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: HEAD
+    path: upbound/provider-aws/resources
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+Apply it with:
+
+```shell
+kubectl apply -f argocd/crossplane-resources/crossplane-managed-resources.yaml
+```
+
+If everything went fine, the Argo app should look `Healthy` like this:
+
+![](docs/first-s3-bucket-provisioned-with-argo-crossplane.png)
+
+And inside the AWS console, there should be a new S3 Bucket provisioned:
+
+![](docs/aws-console-s3-bucket-provisioned.png)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -968,64 +1080,7 @@ Here are all components together we deployed so far using Argo:
 
 ![](docs/bootstrap-finalized-argo-crossplane-eso.png)
 
-
-
-
-# Finally provisioning Cloud resources with Crossplane and Argo
-
-Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`upbound/provider-aws/resources/bucket.yaml`](upbound/provider-aws/resources/bucket.yaml) features a super simply example:
-
-```yaml
-apiVersion: s3.aws.upbound.io/v1beta1
-kind: Bucket
-metadata:
-  name: crossplane-argocd-s3-bucket
-spec:
-  forProvider:
-    region: eu-central-1
-  providerConfigRef:
-    name: default
-```
-
-__TODO:__ Rename `argocd/applications` into `argocd/bootstrap` and the corresponding app-of-apps also into `crossplane-bootstrap` - since that's exactly what it is and does!
-
-
-Since we're using Argo, we should deploy our Bucket as Argo Application too. I created a new folder `argocd/crossplane-resources`
-here, since the Crossplane provisioned infrastructure may not automatically be part of the bootstrap App of Apps.
-
-So here's our Argo Application for all the Crossplane resources that may come: [`argocd/crossplane-resources/crossplane-managed-resources.yaml`](argocd/crossplane-resources/crossplane-managed-resources.yaml):
-
-```yaml
-# The ArgoCD Application for all Crossplane Managed Resources
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: crossplane-managed-resources
-  namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: HEAD
-    path: upbound/provider-aws/resources
-  destination:
-    namespace: default
-    server: https://kubernetes.default.svc
-  syncPolicy:
-    automated:
-      prune: true    
-    retry:
-      limit: 5
-      backoff:
-        duration: 5s 
-        factor: 2 
-        maxDuration: 1m
-```
-
-Apply it with:
+Deploying our [`argocd/crossplane-resources/crossplane-managed-resources.yaml`](argocd/crossplane-resources/crossplane-managed-resources.yaml) should also work as expected:
 
 ```shell
 kubectl apply -f argocd/crossplane-resources/crossplane-managed-resources.yaml
@@ -1038,6 +1093,8 @@ If everything went fine, the Argo app should look `Healthy` like this:
 And inside the AWS console, there should be a new S3 Bucket provisioned:
 
 ![](docs/aws-console-s3-bucket-provisioned.png)
+
+
 
 
 
