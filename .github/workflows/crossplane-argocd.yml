@@ -1,4 +1,4 @@
-name: provision-aws
+name: crossplane-argocd
 
 on: [push]
 
@@ -10,7 +10,7 @@ env:
   AWS_DEFAULT_REGION: 'eu-central-1'
 
 jobs:
-  crossplane-provision-aws:
+  provision:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,7 +24,7 @@ jobs:
           echo "--- Let's try to access our kind cluster via kubectl"
           kubectl get nodes
 
-      - name: Install ArgoCD into kind & ArgoCD CLI in the shell
+      - name: Install ArgoCD into kind
         run: |
           echo "--- Create argo namespace and install it"
           kubectl create namespace argocd
@@ -34,11 +34,6 @@ jobs:
           
           echo "--- Wait for Argo to become ready"
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s
-
-          echo "--- Since there's no brew ready to use anymore (https://github.com/actions/runner-images/issues/6283), we use the curl installation method here (see https://argo-cd.readthedocs.io/en/stable/cli_installation/#download-with-curl)"
-          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
-          rm argocd-linux-amd64
 
       - name: Prepare crossplane AWS Secret
         run: |

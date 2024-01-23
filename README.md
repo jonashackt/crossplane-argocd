@@ -1,5 +1,6 @@
 # crossplane-argocd
-[![Build Status AWS](https://github.com/jonashackt/crossplane-argocd/workflows/provision-aws/badge.svg)](https://github.com/jonashackt/crossplane-argocd/actions/workflows/provision-aws.yml)
+[![Crossplane plain ArgoCD](https://github.com/jonashackt/crossplane-argocd/workflows/crossplane-argocd/badge.svg)](https://github.com/jonashackt/crossplane-argocd/actions/workflows/crossplane-argocd.yml)
+[![Crossplane, ArgoCD & External Secrets Operator (+Doppler)](https://github.com/jonashackt/crossplane-argocd/workflows/crossplane-argocd-external-secrets/badge.svg)](https://github.com/jonashackt/crossplane-argocd/actions/workflows/crossplane-argocd-external-secrets.yml)
 [![License](http://img.shields.io/:license-mit-blue.svg)](https://github.com/jonashackt/crossplane-argocd/blob/master/LICENSE)
 [![renovateenabled](https://img.shields.io/badge/renovate-enabled-yellow)](https://renovatebot.com)
 
@@ -584,10 +585,10 @@ Now if we have a look into `crossplane` App of Apps we see all the needed compon
 
 ## Doing it all with GitHub Actions
 
-Ok, enough theory :)) Let's create a pipeline that shows stuff works. Let's introduce a [.github/workflows/provision-aws.yml](.github/workflows/provision-aws.yml):
+Ok, enough theory :)) Let's create a pipeline that shows stuff works. Let's introduce a [.github/workflows/crossplane-argocd.yml](.github/workflows/crossplane-argocd.yml):
 
 ```yaml
-name: provision-aws
+name: crossplane-argocd
 
 on: [push]
 
@@ -599,7 +600,7 @@ env:
   AWS_DEFAULT_REGION: 'eu-central-1'
 
 jobs:
-  crossplane-provision-aws:
+  provision:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -613,7 +614,7 @@ jobs:
           echo "--- Let's try to access our kind cluster via kubectl"
           kubectl get nodes
 
-      - name: Install ArgoCD into kind & ArgoCD CLI in the shell
+      - name: Install ArgoCD into kind
         run: |
           echo "--- Create argo namespace and install it"
           kubectl create namespace argocd
@@ -623,11 +624,6 @@ jobs:
           
           echo "--- Wait for Argo to become ready"
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s
-
-          echo "--- Since there's no brew ready to use anymore (https://github.com/actions/runner-images/issues/6283), we use the curl installation method here (see https://argo-cd.readthedocs.io/en/stable/cli_installation/#download-with-curl)"
-          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
-          rm argocd-linux-amd64
 
       - name: Prepare crossplane AWS Secret
         run: |
@@ -1095,6 +1091,70 @@ And inside the AWS console, there should be a new S3 Bucket provisioned:
 
 ![](docs/aws-console-s3-bucket-provisioned.png)
 
+
+
+## Adding External Secrets Deployment to GitHub Actions
+
+Let's create another pipeline that shows what differences are to the deployment without External Secrets Operator. Let's introduce a [.github/workflows/crossplane-argocd-external-secrets](.github/workflows/crossplane-argocd-external-secrets):
+
+```yaml
+name: crossplane-argocd-external-secrets
+
+on: [push]
+
+env:
+  KIND_NODE_VERSION: v1.29.0
+  # Doppler
+  DOPPLER_SERVICE_TOKEN: ${{ secrets.DOPPLER_SERVICE_TOKEN }}
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+
+      - name: Spin up kind via brew
+        run: |          
+          echo "--- Create kind cluster"
+          kind create cluster --image "kindest/node:$KIND_NODE_VERSION" --wait 5m
+
+          echo "--- Let's try to access our kind cluster via kubectl"
+          kubectl get nodes
+
+      - name: Install ArgoCD into kind
+        run: |
+          echo "--- Create argo namespace and install it"
+          kubectl create namespace argocd
+
+          echo " Install & configure ArgoCD via Kustomize - see https://stackoverflow.com/a/71692892/4964553"
+          kubectl apply -k argocd/install
+          
+          echo "--- Wait for Argo to become ready"
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s
+
+      - name: Create Secret with the Doppler Service Token for External Secrets Operator
+        run: kubectl create secret generic doppler-token-auth-api --from-literal dopplerToken="$DOPPLER_SERVICE_TOKEN"
+
+      - name: Use ArgoCD's AppOfApps pattern to deploy all Crossplane components
+        run: |
+          echo "--- Let Argo do it's magic installing all Crossplane components"
+          kubectl apply -n argocd -f argocd/crossplane-app-of-apps.yaml 
+
+      - name: Check crossplane status
+        run: |
+          echo "--- Wait for crossplane to become ready (now prefaced with until as described in https://stackoverflow.com/questions/68226288/kubectl-wait-not-working-for-creation-of-resources)"
+          until kubectl wait --for=condition=PodScheduled pod -l app=crossplane --namespace crossplane-system --timeout=120s > /dev/null 2>&1; do : ; done
+          kubectl wait --for=condition=ready pod -l app=crossplane --namespace crossplane-system --timeout=120s
+
+          echo "--- Wait until AWS Provider is up and running (now prefaced with until to prevent Error from server (NotFound): providers.pkg.crossplane.io 'provider-aws-s3' not found)"
+          until kubectl get provider/provider-aws-s3 > /dev/null 2>&1; do : ; done
+          kubectl wait --for=condition=healthy --timeout=180s provider/provider-aws-s3
+
+          kubectl get all -n crossplane-system
+```
+
+Be sure to create `DOPPLER_SERVICE_TOKEN` as GitHub Repository Secrets.
 
 
 
