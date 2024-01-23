@@ -980,14 +980,15 @@ spec:
     kind: ClusterSecretStore
     name: doppler-auth-api
 
-  target:
-    name: aws-secrets-from-doppler
-
   # as we use a lower case key name transformer in our ClusterSecretStore
   # we need to access our 'CREDS' key in Doppler as 'creds'
   dataFrom:
     - find:
         path: creds
+
+  # Create a Kubernetes Secret just as we're used to without External Secrets Operator
+  target:
+    name: aws-creds
 ```
 
 Although we created a `CREDS` secret in Doppler, we need to use `path: creds` here - since we use the ClusterSecretStore name transformer `lower-snake`! Otherwise we get reconcile errors, since the `ExternalSecret` looks for the uppercase path!
@@ -1070,7 +1071,7 @@ spec:
     source: Secret
     secretRef:
       namespace: external-secrets
-      name: aws-secrets-from-doppler
+      name: aws-creds
       key: creds
 ```
 
