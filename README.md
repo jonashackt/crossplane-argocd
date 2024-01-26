@@ -269,7 +269,7 @@ We can double check everything is there on the command line via:
 ```shell
 kubectl get all -n crossplane-system
 ```
-
+                               
 
 ### Create aws-creds.conf file & create AWS Provider secret
 
@@ -371,7 +371,7 @@ The Kubernetes API could not find aws.upbound.io/ProviderConfig for requested re
 
 ### Install crossplane's AWS provider ProviderConfig with ArgoCD
 
-To get our Provider finally working we also need to create a `ProviderConfig` accordingly that will tell the Provider where to find it's AWS credentials. Therefore we create a [upbound/provider-aws-s3/config/provider-config-aws.yaml](upbound/provider-aws-s3/config/provider-config-aws.yaml):
+To get our Provider finally working we also need to create a `ProviderConfig` accordingly that will tell the Provider where to find it's AWS credentials. Therefore we create a [upbound/provider-aws-s3/config/provider-aws-config.yaml](upbound/provider-aws-s3/config/provider-aws-config.yaml):
 
 ```yaml
 apiVersion: aws.upbound.io/v1beta1
@@ -392,14 +392,14 @@ spec:
 The `secretRef.name` and `secretRef.key` has to match the fields of the already created Secret.
 
 
-To let ArgoCD manage and deploy our `ProviderConfig` we again create a new ArgoCD `Application` CRD at [argocd/applications/crossplane-provider-config-aws.yaml](argocd/applications/crossplane-provider-config-aws.yaml) [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/), which tells Argo to look in the directory path `upbound/provider-aws-s3/config`:
+To let ArgoCD manage and deploy our `ProviderConfig` we again create a new ArgoCD `Application` CRD at [argocd/applications/crossplane-provider-aws-config.yaml](argocd/applications/crossplane-provider-aws-config.yaml) [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/), which tells Argo to look in the directory path `upbound/provider-aws-s3/config`:
 
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: provider-config-aws
+  name: provider-aws-config
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -422,7 +422,7 @@ spec:
 
 
 ```shell
-kubectl apply -n argocd -f argocd/applications/crossplane-provider-config-aws.yaml 
+kubectl apply -n argocd -f argocd/applications/crossplane-provider-aws-config.yaml 
 ```
 
 
@@ -431,30 +431,6 @@ We finally managed to let Argo deploy the Crossplane core components together wi
 
 ![](docs/crossplane-core-provider-providerconfig-successfully-deployed.png)
 
-
-
-
-## Provider and ProviderConfig in one directory / Argo Application
-
-What really drove me nuts was the fact that I needed 2 separate ArgoCD applications for Crossplane's Provider: The Provider itself and the ProviderConfig, where the latter is exactly one single manifest which only configures the Provider where to find it's secrets.
-
-But after digging deeper into Argo's deployment mechanisms, Syncwaves and syncpolicies, I found a way how to get rid of the second Argo Application just for the `provider-config-aws`. 
-
-I simply used `syncPolicy:retry:limit: 5`, so that the `Provider` has the chance to deploy it's CRDs (together with the `ProviderConfig` type), in order the `ProviderConfig` can be deployed successfully. It's all just in [`argocd/applications/crossplane-provider-aws.yaml`](argocd/applications/crossplane-provider-aws.yaml):
-
-```yaml
-  syncPolicy:
-    ... 
-    retry:
-      # Using limit 5, so that the ProviderConfig can "wait" (via retry) for the Provider and it's CRDs to be deployed
-      # and not to run into 'The Kubernetes API could not find aws.upbound.io/ProviderConfig for requested resource default/default.'
-      limit: 5
-      ...
-```
-
-Our Application overview becomes much cleaner and the detail of the `provider-aws` now shows the `default` providerconfig as a second item:
-
-![](docs/provider-aws-provider-config-one-argo-application.png)
 
 
 
