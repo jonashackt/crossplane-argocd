@@ -6,6 +6,6 @@ spec:
   credentials:
     source: Secret
     secretRef:
-      namespace: crossplane-system
-      name: aws-creds
+      namespace: external-secrets
+      name: aws-secrets-from-doppler
       key: creds

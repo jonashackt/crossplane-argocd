@@ -794,6 +794,28 @@ And as I like to show solutions that are fully cromprehensible - ideally without
 
 So I thought the exact secret management tool I use in this case is not that important and I trust my readers that they will choose the provider that suites them the most. That beeing said I chose [Doppler](https://www.doppler.com/) with their [generous free Developer plan](https://www.doppler.com/pricing).
 
+As External-Secrets introduce more complexity to our setup, I decided to divide the crossplane only solution from the more advanced using External Secrets Operator. Therefore the `argocd` directory now looks like this:
+
+```shell
+$ tree                                                                                                                                                  ✔ 
+.
+├── applications
+│   ├── crossplane-core.yaml
+│   ├── crossplane-helm-secret.yaml
+│   └── crossplane-provider-aws.yaml
+├── applications-eso
+│   ├── crossplane-core.yaml
+│   ├── crossplane-helm-secret.yaml
+│   ├── crossplane-provider-aws.yaml
+│   ├── external-secrets-config.yaml
+│   └── external-secrets-operator.yaml
+├── crossplane-app-of-apps.yaml
+├── crossplane-eso-app-of-apps.yaml
+...
+```
+
+Where `applications` and the corresponding `crossplane-app-of-apps.yaml` feature the crossplane only solution - and `applications-eso` with it's `crossplane-eso-app-of-apps.yaml` App-of-Apps counterpart feature the more advanced ESO solution.
+
 
 
 ### Create multiline Secret in Doppler
@@ -861,7 +883,7 @@ dependencies:
     version: 0.9.11
 ```
 
-Now telling ArgoCD where to find our simple external-secrets Helm Chart, we again use Argo's `Application` manifest in [argocd/applications/external-secrets-operator.yaml](argocd/applications/external-secrets-operator.yaml):
+Now telling ArgoCD where to find our simple external-secrets Helm Chart, we again use Argo's `Application` manifest in [argocd/applications-eso/external-secrets-operator.yaml](argocd/applications-eso/external-secrets-operator.yaml):
 
 ```yaml
 # The ArgoCD Application for external-secrets-operator
@@ -990,7 +1012,7 @@ spec:
 Although we created a `CREDS` secret in Doppler, we need to use `path: creds` here - since we use the ClusterSecretStore name transformer `lower-snake`! Otherwise we get reconcile errors, since the `ExternalSecret` looks for the uppercase path!
 
 
-We also need to create a ArgoCD Application so that Argo will deploy both `ClusterSecretStore` and `ExternalSecret` for us :) Therefore I created [`argocd/applications/external-secrets-config.yaml`](argocd/applications/external-secrets-config.yaml):
+We also need to create a ArgoCD Application so that Argo will deploy both `ClusterSecretStore` and `ExternalSecret` for us :) Therefore I created [`argocd/applications-eso/external-secrets-config.yaml`](argocd/applications-eso/external-secrets-config.yaml):
 
 ```yaml
 # The ArgoCD Application for external-secrets-operator
@@ -1055,7 +1077,7 @@ Therefore let's give our `external-secrets-config` more `syncPolicy.retry.limit`
 
 ### Point the Crossplane AWS ProviderConfig to our External Secret created Secret from Doppler
 
-Therefore we need to change our [`upbound/provider-aws-s3/provider/provider-config-aws.yaml`](upbound/provider-aws-s3/provider/provider-config-aws.yaml) to use another Secret name and namespace:
+We need to change our `ProviderConfig` at [`upbound/provider-aws/provider-eos/provider-config-aws.yaml`](upbound/provider-aws/provider-eos/provider-config-aws.yaml) to use another Secret name and namespace: 
 
 ```yaml
 apiVersion: aws.upbound.io/v1beta1
@@ -1067,7 +1089,7 @@ spec:
     source: Secret
     secretRef:
       namespace: external-secrets
-      name: aws-creds
+      name: aws-secrets-from-doppler
       key: creds
 ```
 
@@ -1139,7 +1161,7 @@ jobs:
       - name: Use ArgoCD's AppOfApps pattern to deploy all Crossplane components
         run: |
           echo "--- Let Argo do it's magic installing all Crossplane components"
-          kubectl apply -n argocd -f argocd/crossplane-app-of-apps.yaml 
+          kubectl apply -n argocd -f argocd/crossplane-eso-app-of-apps.yaml 
 
       - name: Check crossplane status
         run: |
