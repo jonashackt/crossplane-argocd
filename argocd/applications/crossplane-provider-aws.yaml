@@ -24,8 +24,6 @@ spec:
     automated:
       prune: true    
     retry:
-      # Using limit 5, so that the ProviderConfig can "wait" (via retry) for the Provider and it's CRDs to be deployed
-      # and not to run into 'The Kubernetes API could not find aws.upbound.io/ProviderConfig for requested resource default/default.'
       limit: 5
       backoff:
         duration: 5s 
