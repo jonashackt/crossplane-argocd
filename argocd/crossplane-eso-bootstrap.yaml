@@ -1,20 +1,18 @@
-# The ArgoCD Application for crossplane core components themselves
+# The ArgoCD App of Apps for all Crossplane components
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-core
+  name: crossplane-eso-bootstrap
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
 spec:
   project: default
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
-    path: crossplane
+    path: argocd/crossplane-eso-bootstrap
   destination:
     server: https://kubernetes.default.svc
     namespace: crossplane-system

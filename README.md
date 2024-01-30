@@ -184,7 +184,7 @@ But as this is a non-standard Helm Chart, we need to define a `Secret` first [as
 
 > "Non standard Helm Chart repositories have to be registered explicitly. Each repository must have url, type and name fields."
 
-So we first create [`crossplane-helm-secret.yaml`](crossplane/crossplane-helm-secret.yaml):
+So we first create [`crossplane-helm-secret.yaml`](argocd/crossplane-bootstrap/crossplane-helm-secret.yaml):
 
 ```yaml
 apiVersion: v1
@@ -203,11 +203,11 @@ stringData:
 We need to apply it via:
 
 ```shell
-kubectl apply -f argocd/applications/crossplane-helm-secret.yaml
+kubectl apply -f argocd/crossplane-bootstrap/crossplane-helm-secret.yaml
 ```
 
 
-Now telling ArgoCD where to find our simple Crossplane Helm Chart, we use Argo's `Application` manifest in [argocd/applications/crossplane-core.yaml](argocd/applications/crossplane-core.yaml):
+Now telling ArgoCD where to find our simple Crossplane Helm Chart, we use Argo's `Application` manifest in [argocd/crossplane-bootstrap/crossplane.yaml](argocd/crossplane-bootstrap/crossplane.yaml):
 
 ```yaml
 # The ArgoCD Application for crossplane core components themselves
@@ -215,7 +215,7 @@ Now telling ArgoCD where to find our simple Crossplane Helm Chart, we use Argo's
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-core
+  name: crossplane
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -241,11 +241,11 @@ spec:
         maxDuration: 1m
 ```
 
-As the docs state https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#applications
+As the docs state https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#crossplane-bootstrap
 
 > "Without the `resources-finalizer.argocd.argoproj.io finalizer`, deleting an application will not delete the resources it manages. To perform a cascading delete, you must add the finalizer. See [App Deletion](https://argo-cd.readthedocs.io/en/stable/user-guide/app_deletion/#about-the-deletion-finalizer)."
 
-In other words, if we would run `kubectl delete -n argocd -f argocd/applications/crossplane-core.yaml`, Crossplane wouldn't be undeployed as we may think. Only the ArgoCD `Application` would be deleted, but Crossplane Pods etc. would be still running.
+In other words, if we would run `kubectl delete -n argocd -f argocd/crossplane-bootstrap/crossplane.yaml`, Crossplane wouldn't be undeployed as we may think. Only the ArgoCD `Application` would be deleted, but Crossplane Pods etc. would be still running.
 
 Our `Application` configures Crossplane core componentes to be automatically pruned https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/#automatic-pruning via `automated: prune: true`.
 
@@ -255,7 +255,7 @@ We also use `syncOptions: - CreateNamespace=true` here [to let Argo create the c
 
 
 ```shell
-kubectl apply -n argocd -f argocd/applications/crossplane-core.yaml
+kubectl apply -n argocd -f argocd/crossplane-bootstrap/crossplane.yaml
 ```
 
 Now ArgoCD deploys our core crossplane components for us :)
@@ -313,7 +313,7 @@ spec:
   revisionHistoryLimit: 1
 ```
 
-How do we let ArgoCD manage and deploy this to our cluster? The simple way of [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/) is what we're looking for. Therefore we create a new ArgoCD `Application` CRD at [argocd/applications/crossplane-provider-aws.yaml](argocd/applications/crossplane-provider-aws.yaml), which tells Argo to look in the directory path `upbound/provider-aws-s3/config`:
+How do we let ArgoCD manage and deploy this to our cluster? The simple way of [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/) is what we're looking for. Therefore we create a new ArgoCD `Application` CRD at [argocd/crossplane-bootstrap/crossplane-provider-aws.yaml](argocd/crossplane-bootstrap/crossplane-provider-aws.yaml), which tells Argo to look in the directory path `upbound/provider-aws-s3/config`:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -354,7 +354,7 @@ We also use the finalizer `resources-finalizer.argocd.argoproj.io finalizer` lik
 Let's apply this `Application` to our cluster also:
 
 ```shell
-kubectl apply -n argocd -f argocd/applications/crossplane-provider-aws.yaml 
+kubectl apply -n argocd -f argocd/crossplane-bootstrap/crossplane-provider-aws.yaml 
 ```
 
 
@@ -392,7 +392,7 @@ spec:
 The `secretRef.name` and `secretRef.key` has to match the fields of the already created Secret.
 
 
-To let ArgoCD manage and deploy our `ProviderConfig` we again create a new ArgoCD `Application` CRD at [argocd/applications/crossplane-provider-aws-config.yaml](argocd/applications/crossplane-provider-aws-config.yaml) [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/), which tells Argo to look in the directory path `upbound/provider-aws-s3/config`:
+To let ArgoCD manage and deploy our `ProviderConfig` we again create a new ArgoCD `Application` CRD at [argocd/crossplane-bootstrap/crossplane-provider-aws-config.yaml](argocd/crossplane-bootstrap/crossplane-provider-aws-config.yaml) [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/), which tells Argo to look in the directory path `upbound/provider-aws-s3/config`:
 
 
 ```yaml
@@ -422,7 +422,7 @@ spec:
 
 
 ```shell
-kubectl apply -n argocd -f argocd/applications/crossplane-provider-aws-config.yaml 
+kubectl apply -n argocd -f argocd/crossplane-bootstrap/crossplane-provider-aws-config.yaml 
 ```
 
 
@@ -479,7 +479,7 @@ ArgoCD Applications can be used in ArgoCD Applications - since they are normal K
 
 Therefore let's define a new top level `Application` that manages the whole Crossplane setup incl. core, Provider, ProviderConfig etc.
 
-I created my App of Apps definition in [argocd/crossplane-app-of-apps.yaml](argocd/crossplane-app-of-apps.yaml):
+I created my App of Apps definition in [argocd/crossplane-bootstrap.yaml](argocd/crossplane-bootstrap.yaml):
 
 ```yaml
 # The ArgoCD App of Apps for all Crossplane components
@@ -496,7 +496,7 @@ spec:
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
-    path: argocd/applications
+    path: argocd/crossplane-bootstrap
   destination:
     server: https://kubernetes.default.svc
     namespace: crossplane-system
@@ -513,13 +513,13 @@ spec:
         maxDuration: 1m
 ```
 
-This `Application` will look for manifests at `argocd/applications` in our repository https://github.com/jonashackt/crossplane-argocd. And there all our Crossplane components are already defined as ArgoCD `Application` manifests. 
+This `Application` will look for manifests at `argocd/crossplane-bootstrap` in our repository https://github.com/jonashackt/crossplane-argocd. And there all our Crossplane components are already defined as ArgoCD `Application` manifests. 
 
 Also don't forget to define the finalizers `finalizers: - resources-finalizer.argocd.argoproj.io`. Otherwise the Applications managed by this App of Apps won't be deleted and will still be running, if you delete just the App of Apps!
 
 Voilá. Now we need to use Argo's [`SyncWaves` feature](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/) as already mentioned to define, which ArgoCD Application (representing a Crossplane component each) needs to be deployed by Argo in which exact order.
 
-First we need to deploy the [Crossplane Helm Secret](argocd/applications/crossplane-helm-secret.yaml), so we add the `annotations: argocd.argoproj.io/sync-wave` configuration to it's `metadata`:
+First we need to deploy the [Crossplane Helm Secret](argocd/crossplane-bootstrap/crossplane-helm-secret.yaml), so we add the `annotations: argocd.argoproj.io/sync-wave` configuration to it's `metadata`:
 
 ```yaml
 metadata:
@@ -529,7 +529,7 @@ metadata:
 
 We use `sync-wave: "0"` here, to define it as the earliest stage of Argo deployment (you could use negative numbers though, but for simplicity we start at zero).
 
-Then we need to deploy the Crossplane core components, defined in [`argocd/applications/crossplane-core.yaml`](argocd/applications/crossplane-core.yaml). There we add the next SyncWave as `sync-wave: "1"`:
+Then we need to deploy the Crossplane core components, defined in [`argocd/crossplane-bootstrap/crossplane.yaml`](argocd/crossplane-bootstrap/crossplane.yaml). There we add the next SyncWave as `sync-wave: "1"`:
 
 ```yaml
 metadata:
@@ -537,12 +537,12 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
 ```
 
-You get the point! We also add the `sync-wave` annotation to the AWS Provider in [`argocd/applications/crossplane-provider-aws.yaml`](argocd/applications/crossplane-provider-aws.yaml) and the ProviderConfig at [`argocd/applications/crossplane-provider-config-aws.yaml`](argocd/applications/crossplane-provider-config-aws.yaml).
+You get the point! We also add the `sync-wave` annotation to the AWS Provider in [`argocd/crossplane-bootstrap/crossplane-provider-aws.yaml`](argocd/crossplane-bootstrap/crossplane-provider-aws.yaml) and the ProviderConfig at [`argocd/crossplane-bootstrap/crossplane-provider-config-aws.yaml`](argocd/crossplane-bootstrap/crossplane-provider-config-aws.yaml).
 
 Now we should be able to finally apply our Crossplane App of Apps in Argo:
 
 ```shell
-kubectl apply -n argocd -f argocd/crossplane-app-of-apps.yaml 
+kubectl apply -n argocd -f argocd/crossplane-bootstrap.yaml 
 ```
 
 And like magic all our Crossplane components get deployed step by step in correct order:
@@ -618,7 +618,7 @@ jobs:
       - name: Use ArgoCD's AppOfApps pattern to deploy all Crossplane components
         run: |
           echo "--- Let Argo do it's magic installing all Crossplane components"
-          kubectl apply -n argocd -f argocd/crossplane-app-of-apps.yaml 
+          kubectl apply -n argocd -f argocd/crossplane-bootstrap.yaml 
 
       - name: Check crossplane status
         run: |
@@ -658,8 +658,6 @@ spec:
   providerConfigRef:
     name: default
 ```
-
-__TODO:__ Rename `argocd/applications` into `argocd/bootstrap` and the corresponding app-of-apps also into `crossplane-bootstrap` - since that's exactly what it is and does!
 
 
 Since we're using Argo, we should deploy our Bucket as Argo Application too. I created a new folder `argocd/crossplane-resources`
@@ -773,24 +771,24 @@ So I thought the exact secret management tool I use in this case is not that imp
 As External-Secrets introduce more complexity to our setup, I decided to divide the crossplane only solution from the more advanced using External Secrets Operator. Therefore the `argocd` directory now looks like this:
 
 ```shell
-$ tree                                                                                                                                                  ✔ 
+$ tree
 .
-├── applications
-│   ├── crossplane-core.yaml
+├── crossplane-bootstrap
+│   ├── crossplane.yaml
 │   ├── crossplane-helm-secret.yaml
 │   └── crossplane-provider-aws.yaml
-├── applications-eso
-│   ├── crossplane-core.yaml
+├── crossplane-eso-bootstrap
+│   ├── crossplane.yaml
 │   ├── crossplane-helm-secret.yaml
 │   ├── crossplane-provider-aws.yaml
 │   ├── external-secrets-config.yaml
 │   └── external-secrets-operator.yaml
-├── crossplane-app-of-apps.yaml
+├── crossplane-bootstrap.yaml
 ├── crossplane-eso-app-of-apps.yaml
 ...
 ```
 
-Where `applications` and the corresponding `crossplane-app-of-apps.yaml` feature the crossplane only solution - and `applications-eso` with it's `crossplane-eso-app-of-apps.yaml` App-of-Apps counterpart feature the more advanced ESO solution.
+Where `crossplane-bootstrap` and the corresponding `crossplane-bootstrap.yaml` feature the crossplane only solution - and `crossplane-eso-bootstrap` with it's `crossplane-eso-app-of-apps.yaml` App-of-Apps counterpart feature the more advanced ESO solution.
 
 
 
@@ -859,7 +857,7 @@ dependencies:
     version: 0.9.11
 ```
 
-Now telling ArgoCD where to find our simple external-secrets Helm Chart, we again use Argo's `Application` manifest in [argocd/applications-eso/external-secrets-operator.yaml](argocd/applications-eso/external-secrets-operator.yaml):
+Now telling ArgoCD where to find our simple external-secrets Helm Chart, we again use Argo's `Application` manifest in [argocd/crossplane-eso-bootstrap/external-secrets-operator.yaml](argocd/crossplane-eso-bootstrap/external-secrets-operator.yaml):
 
 ```yaml
 # The ArgoCD Application for external-secrets-operator
@@ -897,7 +895,7 @@ spec:
 
 We define the SyncWave to deploy external-secrets before every other Crossplane component via `annotations: argocd.argoproj.io/sync-wave: "-1"`.
 
-Just for checking if it works, we can use a `kubectl apply -f argocd/applications/external-secrets.yaml` to apply it to our cluster. If everything went correctly, there should be a new ArgoCD Application featuring a bunch of CRDs, some roles and three Pods: `external-secrets`, `external-secrets-webhook` and `external-secrets-cert-controller`:
+Just for checking if it works, we can use a `kubectl apply -f argocd/crossplane-bootstrap/external-secrets.yaml` to apply it to our cluster. If everything went correctly, there should be a new ArgoCD Application featuring a bunch of CRDs, some roles and three Pods: `external-secrets`, `external-secrets-webhook` and `external-secrets-cert-controller`:
 
 ![](docs/external-secrets-argo-app.png)
 
@@ -984,7 +982,7 @@ spec:
 We created a `CREDS` secret in Doppler, so the `ExternalSecret` looks for this exact path.
 
 
-We also need to create a ArgoCD Application so that Argo will deploy both `ClusterSecretStore` and `ExternalSecret` for us :) Therefore I created [`argocd/applications-eso/external-secrets-config.yaml`](argocd/applications-eso/external-secrets-config.yaml):
+We also need to create a ArgoCD Application so that Argo will deploy both `ClusterSecretStore` and `ExternalSecret` for us :) Therefore I created [`argocd/crossplane-eso-bootstrap/external-secrets-config.yaml`](argocd/crossplane-eso-bootstrap/external-secrets-config.yaml):
 
 ```yaml
 # The ArgoCD Application for external-secrets-operator
