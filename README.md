@@ -933,9 +933,6 @@ spec:
             name: doppler-token-auth-api
             key: dopplerToken
             namespace: default
-      # using a key name transformer https://external-secrets.io/latest/provider/doppler/#5-name-transformer
-      # to get the lower case key name (as in the Crossplane docs)
-      nameTransformer: lower-snake
 ```
 
 Don't forget to configure a `namespace` for the `doppler-token-auth-api` Secret we created earlier. Otherwise we'll run into errors like:
@@ -944,10 +941,10 @@ Don't forget to configure a `namespace` for the `doppler-token-auth-api` Secret 
 admission webhook "validate.clustersecretstore.external-secrets.io" denied the request: invalid store: cluster scope requires namespace (retried 1 times).
 ```
 
-Additionally we use the name transformer `lower-snake` here - since we want External Secrets Operator to create a Secret that's similar to the one mentioned in the Crossplane docs (if you decode it):
+The External Secrets Operator will create a Secret that's similar to the one mentioned in the Crossplane docs (if you decode it), but with the uppercase `CREDS` key we used in Doppler:
 
 ```shell
-creds: |+
+CREDS: |+
 [default] 
 aws_access_key_id = yourAccessKeyIdHere
 aws_secret_access_key = yourSecretAccessKeyHere
@@ -974,18 +971,17 @@ spec:
     kind: ClusterSecretStore
     name: doppler-auth-api
 
-  # as we use a lower case key name transformer in our ClusterSecretStore
-  # we need to access our 'CREDS' key in Doppler as 'creds'
+  # access our 'CREDS' key in Doppler
   dataFrom:
     - find:
-        path: creds
+        path: CREDS
 
   # Create a Kubernetes Secret just as we're used to without External Secrets Operator
   target:
-    name: aws-creds
+    name: aws-secrets-from-doppler
 ```
 
-Although we created a `CREDS` secret in Doppler, we need to use `path: creds` here - since we use the ClusterSecretStore name transformer `lower-snake`! Otherwise we get reconcile errors, since the `ExternalSecret` looks for the uppercase path!
+We created a `CREDS` secret in Doppler, so the `ExternalSecret` looks for this exact path.
 
 
 We also need to create a ArgoCD Application so that Argo will deploy both `ClusterSecretStore` and `ExternalSecret` for us :) Therefore I created [`argocd/applications-eso/external-secrets-config.yaml`](argocd/applications-eso/external-secrets-config.yaml):
@@ -1066,7 +1062,7 @@ spec:
     secretRef:
       namespace: external-secrets
       name: aws-secrets-from-doppler
-      key: creds
+      key: CREDS
 ```
 
 With this final piece our setup should be complete to be able to provision some infrastructure with ArgoCD and Crossplane!
