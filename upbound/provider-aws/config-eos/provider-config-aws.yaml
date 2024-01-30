@@ -8,4 +8,4 @@ spec:
     secretRef:
       namespace: external-secrets
       name: aws-secrets-from-doppler
-      key: creds
+      key: CREDS
