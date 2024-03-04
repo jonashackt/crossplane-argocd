@@ -1177,7 +1177,8 @@ spec:
     blockPublicPolicy: false
     ignorePublicAcls: false
     restrictPublicBuckets: false
-    bucketRef: crossplane-argocd-s3-bucket
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
     region: eu-central-1
 ---
 apiVersion: s3.aws.upbound.io/v1beta1
@@ -1188,7 +1189,8 @@ spec:
   forProvider:
     rule:
       - objectOwnership: ObjectWriter
-    bucketRef: crossplane-argocd-s3-bucket
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
     region: eu-central-1
 ---
 apiVersion: s3.aws.upbound.io/v1beta1
@@ -1198,7 +1200,8 @@ metadata:
 spec:
   forProvider:
     acl: "public-read"
-    bucketRef: crossplane-argocd-s3-bucket
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
     region: eu-central-1
 ---
 apiVersion: s3.aws.upbound.io/v1beta1
@@ -1209,10 +1212,19 @@ spec:
   forProvider:
     indexDocument:
       - suffix: index.html
-    bucketRef: crossplane-argocd-s3-bucket
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
     region: eu-central-1
 ```
 
+
+Also let's sync the Nuxt.js project https://github.com/jonashackt/microservice-ui-nuxt-js via the used `aws s3 sync`:
+
+```shell
+aws s3 sync .output/public/ s3://crossplane-argocd-s3-bucket --acl public-read
+```
+
+And we should be able to access our via http://crossplane-argocd-s3-bucket.s3-website.eu-central-1.amazonaws.com
 
 
 
