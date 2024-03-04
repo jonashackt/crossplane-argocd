@@ -18,7 +18,7 @@ spec:
     blockPublicPolicy: false
     ignorePublicAcls: false
     restrictPublicBuckets: false
-    bucketRef: "crossplane-argocd-s3-bucket"
+    bucketRef: crossplane-argocd-s3-bucket
     region: eu-central-1
 ---
 apiVersion: s3.aws.upbound.io/v1beta1
@@ -29,7 +29,7 @@ spec:
   forProvider:
     rule:
       - objectOwnership: ObjectWriter
-    bucketRef: "crossplane-argocd-s3-bucket"
+    bucketRef: crossplane-argocd-s3-bucket
     region: eu-central-1
 ---
 apiVersion: s3.aws.upbound.io/v1beta1
@@ -39,7 +39,7 @@ metadata:
 spec:
   forProvider:
     acl: "public-read"
-    bucketRef: "crossplane-argocd-s3-bucket"
+    bucketRef: crossplane-argocd-s3-bucket
     region: eu-central-1
 ---
 apiVersion: s3.aws.upbound.io/v1beta1
@@ -50,5 +50,5 @@ spec:
   forProvider:
     indexDocument:
       - suffix: index.html
-    bucketRef: "crossplane-argocd-s3-bucket"
+    bucketRef: crossplane-argocd-s3-bucket
     region: eu-central-1
