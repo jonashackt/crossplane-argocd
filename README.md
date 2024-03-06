@@ -1227,6 +1227,95 @@ aws s3 sync .output/public/ s3://crossplane-argocd-s3-bucket --acl public-read
 And we should be able to access our via http://crossplane-argocd-s3-bucket.s3-website.eu-central-1.amazonaws.com
 
 
+## Deploy a static website with ArgoCD?
+
+Application sources are generally Kubernetes manifests in Argo https://argo-cd.readthedocs.io/en/stable/user-guide/application_sources/
+
+So how do we actually deploy our static website to S3?
+
+https://www.reddit.com/r/kubernetes/comments/17qsi5b/is_there_a_kubernetes_way_of_deploying_static_web/
+
+According to https://github.com/argoproj/argo-cd/discussions/5052 there's the way to use custom Config Management Plugins https://argo-cd.readthedocs.io/en/stable/operator-manual/config-management-plugins/
+
+
+Proposal for Parameterized Configuration Management Plugins in Argo: https://argo-cd.readthedocs.io/en/latest/proposals/parameterized-config-management-plugins/
+
+
+But maybe we should simply deploy our static website to K8s as well? https://gimlet.io/blog/hosting-static-sites-on-kubernetes
+
+https://thenewstack.io/gitops-as-an-evolution-of-kubernetes/
+
+
+
+## Bootstrap a EKS cluster with Crossplane
+
+https://marketplace.upbound.io/providers/upbound/provider-aws-eks/
+
+Example
+
+https://github.com/upbound/configuration-eks
+
+
+### Add EKS and ECS Providers
+
+We first need to add 2 more Crossplane Providers from the upbound provider families: `provider-aws-eks` and `provider-aws-ec2`.
+
+[`upbound/provider-aws/provider/provider-aws-eks.yaml`](upbound/provider-aws/provider/provider-aws-eks.yaml):
+
+```yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-eks
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-eks:v1.1.0
+  packagePullPolicy: Always
+  revisionActivationPolicy: Automatic
+  revisionHistoryLimit: 1
+```
+
+and the [`upbound/provider-aws/provider/provider-aws-ec2.yaml`](upbound/provider-aws/provider/provider-aws-ec2.yaml):
+
+```yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-ec2
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.1.0
+  packagePullPolicy: Always
+  revisionActivationPolicy: Automatic
+  revisionHistoryLimit: 1
+```
+
+Our already present Argo `Application` should be able to automatically pull the new Providers too without further changes
+
+
+### The EKS Cluster Composition
+
+Can be found in `upbound/provider-aws/apis/eks`
+
+
+
+### The corresponding EC2 Networking Composition
+
+Can be found in `upbound/provider-aws/apis/networking`
+
+
+
+### The nested XR for EKS Cluster & Networking Compositions
+
+Can be found in `upbound/provider-aws/apis`
+
+
+
+### Add new Compositions to Argo
+
+
+
+
+
+
 
 
 # Links

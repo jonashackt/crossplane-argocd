@@ -1,0 +1,354 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: networking
+  labels:
+    provider: aws
+spec:
+  compositeTypeRef:
+    apiVersion: crossplane.jonashackt.io/v1alpha1
+    kind: XNetworking
+
+  writeConnectionSecretsToNamespace: crossplane-system
+
+  patchSets:
+  - name: networkconfig
+    patches:
+    - type: FromCompositeFieldPath
+      fromFieldPath: spec.id
+      toFieldPath: metadata.labels[aws.crossplane.jonashackt.io/network-id] # the network-id other components will use
+    - fromFieldPath: "spec.parameters.region"
+      toFieldPath: "spec.forProvider.region"
+  
+  resources:
+    ### VPC and InternetGateway
+    - name: platform-vcp
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: VPC
+        spec:
+          forProvider:
+            cidrBlock: 10.0.0.0/16
+            enableDnsSupport: true
+            enableDnsHostnames: true
+            tags:
+              Owner: Platform Team
+              Name: platform-vpc
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+        - fromFieldPath: spec.id
+          toFieldPath: metadata.name
+    
+    - name: gateway
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: InternetGateway
+        spec:
+          forProvider:
+            vpcIdSelector:
+              matchControllerRef: true
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+
+
+    ### Subnet Configuration
+    - name: subnet-public-eu-central-1a
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: Subnet
+        metadata:
+          labels:
+            access: public
+        spec:
+          forProvider:
+            mapPublicIpOnLaunch: true
+            cidrBlock: 10.0.0.0/24
+            vpcIdSelector:
+              matchControllerRef: true
+            tags:
+              kubernetes.io/role/elb: "1"
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+        - type: ToCompositeFieldPath
+          fromFieldPath: metadata.annotations[crossplane.io/external-name]
+          toFieldPath: status.subnetIds[0]
+        # define eu-central-1a as zone & availabilityZone
+        - type: ToCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: metadata.labels.zone
+          transforms:
+            - type: string
+              string:
+                fmt: "%sa"
+        - type: ToCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.availabilityZone
+          transforms:
+            - type: string
+              string:
+                fmt: "%sa"
+    
+    - name: subnet-public-eu-central-1b
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: Subnet
+        metadata:
+          labels:
+            access: public
+        spec:
+          forProvider:
+            mapPublicIpOnLaunch: true
+            cidrBlock: 10.0.1.0/24
+            vpcIdSelector:
+              matchControllerRef: true
+            tags:
+              kubernetes.io/role/elb: "1"
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+        - type: ToCompositeFieldPath
+          fromFieldPath: metadata.annotations[crossplane.io/external-name]
+          toFieldPath: status.subnetIds[1]
+          # define eu-central-1b as zone & availabilityZone
+        - type: ToCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: metadata.labels.zone
+          transforms:
+            - type: string
+              string:
+                fmt: "%sb"
+        - type: ToCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.availabilityZone
+          transforms:
+            - type: string
+              string:
+                fmt: "%sb"
+
+    - name: subnet-public-eu-central-1c
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: Subnet
+        metadata:
+          labels:
+            access: public
+        spec:
+          forProvider:
+            mapPublicIpOnLaunch: true
+            cidrBlock: 10.0.2.0/24
+            vpcIdSelector:
+              matchControllerRef: true
+            tags:
+              kubernetes.io/role/elb: "1"
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+        - type: ToCompositeFieldPath
+          fromFieldPath: metadata.annotations[crossplane.io/external-name]
+          toFieldPath: status.subnetIds[1]
+          # define eu-central-1c as zone & availabilityZone
+        - type: ToCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: metadata.labels.zone
+          transforms:
+            - type: string
+              string:
+                fmt: "%sc"
+        - type: ToCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.availabilityZone
+          transforms:
+            - type: string
+              string:
+                fmt: "%sc"   
+
+    ### SecurityGroups & Rules
+    - name: securitygroup-nodepool
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: SecurityGroup
+        metadata:
+          annotations:
+            meta.upbound.io/example-id: ec2/v1beta1/securitygroupegressrule
+        spec:
+          forProvider:
+            description: Cluster communication with worker nodes
+            name: securitygroup-nodepool
+            vpcIdSelector:
+              matchControllerRef: true
+
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+        - fromFieldPath: spec.id
+          toFieldPath: metadata.name
+
+    - name: securitygroup-nodepool-rule
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: SecurityGroupRule
+        spec:
+          forProvider:
+            type: egress
+            cidrBlocks:
+              - 0.0.0.0/0
+            fromPort: 0
+            protocol: tcp
+            securityGroupIdSelector:
+              matchLabels:
+                testing.upbound.io/example-name: securitygrouprule
+            toPort: 0
+
+
+    ### Route Table
+    - name: routetable
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: RouteTable
+        spec:
+          forProvider:
+            vpcIdSelector:
+              matchControllerRef: true
+            routes:
+              - destinationCidrBlock: 0.0.0.0/0
+                gatewayIdSelector:
+                  matchControllerRef: true
+            associations:
+              - subnetIdSelector:
+                  matchControllerRef: true
+                  matchLabels:
+                    zone: us-east-1a
+                    access: public
+              - subnetIdSelector:
+                  matchControllerRef: true
+                  matchLabels:
+                    zone: us-east-1b
+                    access: public
+              - subnetIdSelector:
+                  matchControllerRef: true
+                  matchLabels:
+                    zone: us-east-1c
+                    access: public
+      patches:
+      - type: PatchSet
+        patchSetName: networkconfig
+      - fromFieldPath: spec.id
+        toFieldPath: metadata.name
+
+
+
+    - name: routeTable
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: RouteTable
+        spec:
+          forProvider:
+            vpcIdSelector:
+              matchControllerRef: true
+      patches:
+      - type: PatchSet
+        patchSetName: networkconfig
+
+    - name: route
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: Route
+        spec:
+          forProvider:
+            destinationCidrBlock: 0.0.0.0/0
+            gatewayIdSelector:
+              matchControllerRef: true
+            routeTableIdSelector:
+              matchControllerRef: true
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+
+    - name: mainRouteTableAssociation
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: MainRouteTableAssociation
+        spec:
+          forProvider:
+            routeTableIdSelector:
+              matchControllerRef: true
+            vpcIdSelector:
+              matchControllerRef: true
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+
+    - name: RouteTableAssociation-public-a
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: RouteTableAssociation
+        spec:
+          forProvider:
+            routeTableIdSelector:
+              matchControllerRef: true
+            subnetIdSelector:
+              matchControllerRef: true
+              matchLabels:
+                access: public
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+        # define eu-central-1a as subnetIdSelector.matchLabels.zone
+        - type: ToCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels.zone
+          transforms:
+            - type: string
+              string:
+                fmt: "%sa"
+
+    - name: RouteTableAssociation-public-b
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: RouteTableAssociation
+        spec:
+          forProvider:
+            routeTableIdSelector:
+              matchControllerRef: true
+            subnetIdSelector:
+              matchControllerRef: true
+              matchLabels:
+                access: public
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+        # define eu-central-1b as subnetIdSelector.matchLabels.zone
+        - type: ToCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels.zone
+          transforms:
+            - type: string
+              string:
+                fmt: "%sb"
+
+    - name: RouteTableAssociation-public-c
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: RouteTableAssociation
+        spec:
+          forProvider:
+            routeTableIdSelector:
+              matchControllerRef: true
+            subnetIdSelector:
+              matchControllerRef: true
+              matchLabels:
+                access: public
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+        # define eu-central-1c as subnetIdSelector.matchLabels.zone
+        - type: ToCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels.zone
+          transforms:
+            - type: string
+              string:
+                fmt: "%sc"
