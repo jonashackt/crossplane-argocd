@@ -1319,6 +1319,9 @@ Can be found in `upbound/provider-aws/apis/eks`
 # EKS XRD & Composition
 kubectl apply -f upbound/provider-aws/apis/eks/definition.yaml
 kubectl apply -f upbound/provider-aws/apis/eks/composition.yaml
+
+# Precheck if EKSCluster works
+kubectl apply -f upbound/provider-aws/apis/eks/claim.yaml 
 ```
 
 ### The nested XR for Networking & EKS Cluster Compositions

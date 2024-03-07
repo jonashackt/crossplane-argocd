@@ -67,6 +67,8 @@ spec:
                     required:
                     - count
                 required:
+                - subnetIds
+                - securityGroupIds
                 - region
                 - nodes
             required:

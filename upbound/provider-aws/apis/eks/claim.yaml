@@ -1,0 +1,19 @@
+apiVersion: eks.aws.crossplane.jonashackt.io/v1alpha1
+kind: EKSCluster
+metadata:
+  namespace: default
+  name: deploy-target-eks
+spec:
+  id: deploy-target-eks
+  parameters:
+    subnetIds:
+      - subnet-07d9435e0729489f5
+      - subnet-0971c88d89ce422e9
+      - subnet-0b31bbfc5b7153dc3       
+    securityGroupIds:
+      - sg-075e50ffd3839c608
+    region: eu-central-1
+    nodes:
+      count: 3
+  writeConnectionSecretToRef:
+    name: eks-cluster-kubeconfig
