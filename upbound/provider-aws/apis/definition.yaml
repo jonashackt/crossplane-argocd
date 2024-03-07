@@ -1,9 +1,9 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: CompositeResourceDefinition
 metadata:
-  name: xkubernetesclusters.crossplane.jonashackt.io
+  name: xkubernetesclusters.k8s.crossplane.jonashackt.io
 spec:
-  group: crossplane.jonashackt.io
+  group: k8s.crossplane.jonashackt.io
   names:
     kind: XKubernetesCluster
     plural: xkubernetesclusters

@@ -1,9 +1,9 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: CompositeResourceDefinition
 metadata:
-  name: xnetworking.aws.crossplane.jonashackt.io
+  name: xnetworkings.net.aws.crossplane.jonashackt.io
 spec:
-  group: crossplane.jonashackt.io
+  group: net.aws.crossplane.jonashackt.io
   names:
     kind: XNetworking
     plural: xnetworkings
@@ -22,8 +22,17 @@ spec:
                 id:
                   type: string
                   description: ID of this Network that other objects will use to refer to it.
+                parameters:
+                  type: object
+                  description: Network configuration parameters.
+                  properties:
+                    region:
+                      type: string
+                  required:
+                    - region
               required:
                 - id
+                - parameters
             # defining return values
             status:
               type: object

@@ -5,13 +5,32 @@ metadata:
 spec:
   writeConnectionSecretsToNamespace: crossplane-system
   compositeTypeRef:
-    apiVersion: crossplane.jonashackt.io
+    apiVersion: k8s.crossplane.jonashackt.io
     kind: XKubernetesCluster
   resources:
+    ### Nested use of XNetworking XR
+    - name: compositeNetworkEKS
+      base:
+        apiVersion: net.aws.crossplane.jonashackt.io/v1alpha1
+        kind: XNetworking
+      patches:
+        - fromFieldPath: spec.id
+          toFieldPath: spec.id
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.subnetIds
+          toFieldPath: status.subnetIds
+          policy:
+            fromFieldPath: Required
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.securityGroupIds
+          toFieldPath: status.securityGroupIds
+          policy:
+            fromFieldPath: Required
+    
     ### Nested use of XEKSCluster XR
     - name: compositeClusterEKS
       base:
-        apiVersion: crossplane.jonashackt.io/v1alpha1
+        apiVersion: eks.aws.crossplane.jonashackt.io/v1alpha1
         kind: XEKSCluster
       connectionDetails:
         - fromConnectionSecretKey: kubeconfig
@@ -30,8 +49,6 @@ spec:
           toFieldPath: spec.writeConnectionSecretToRef.namespace
         - fromFieldPath: spec.parameters.nodes.count
           toFieldPath: spec.parameters.nodes.count
-        - fromFieldPath: spec.parameters.nodes.size
-          toFieldPath: spec.parameters.nodes.size
         - fromFieldPath: status.subnetIds
           toFieldPath: spec.parameters.subnetIds
           policy:
@@ -40,23 +57,3 @@ spec:
           toFieldPath: spec.parameters.securityGroupIds
           policy:
             fromFieldPath: Required
-    
-    ### Nested use of XNetworking XR
-    - name: compositeNetworkEKS
-      base:
-        apiVersion: crossplane.jonashackt.io/v1alpha1
-        kind: XNetworking
-      patches:
-        - fromFieldPath: spec.id
-          toFieldPath: spec.id
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.subnetIds
-          toFieldPath: status.subnetIds
-          policy:
-            fromFieldPath: Required
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.securityGroupIds
-          toFieldPath: status.securityGroupIds
-          policy:
-            fromFieldPath: Required
-      

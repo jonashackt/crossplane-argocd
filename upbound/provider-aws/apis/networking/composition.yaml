@@ -6,7 +6,7 @@ metadata:
     provider: aws
 spec:
   compositeTypeRef:
-    apiVersion: crossplane.jonashackt.io/v1alpha1
+    apiVersion: net.aws.crossplane.jonashackt.io/v1alpha1
     kind: XNetworking
 
   writeConnectionSecretsToNamespace: crossplane-system
@@ -16,10 +16,11 @@ spec:
     patches:
     - type: FromCompositeFieldPath
       fromFieldPath: spec.id
-      toFieldPath: metadata.labels[aws.crossplane.jonashackt.io/network-id] # the network-id other components will use
-    - fromFieldPath: "spec.parameters.region"
-      toFieldPath: "spec.forProvider.region"
-  
+      toFieldPath: metadata.labels[net.aws.crossplane.jonashackt.io/network-id] # the network-id other components will use
+    - type: FromCompositeFieldPath
+      fromFieldPath: spec.parameters.region
+      toFieldPath: spec.forProvider.region
+
   resources:
     ### VPC and InternetGateway
     - name: platform-vcp
@@ -72,25 +73,25 @@ spec:
       patches:
         - type: PatchSet
           patchSetName: networkconfig
-        # provide the subnetId for later use as status.subnetIds entry
-        - type: ToCompositeFieldPath
-          fromFieldPath: metadata.annotations[crossplane.io/external-name]
-          toFieldPath: status.subnetIds[0]
         # define eu-central-1a as zone & availabilityZone
-        - type: ToCompositeFieldPath
+        - type: FromCompositeFieldPath
           fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.zone
           transforms:
             - type: string
               string:
                 fmt: "%sa"
-        - type: ToCompositeFieldPath
+        - type: FromCompositeFieldPath
           fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.availabilityZone
           transforms:
             - type: string
               string:
                 fmt: "%sa"
+        # provide the subnetId for later use as status.subnetIds entry
+        - type: ToCompositeFieldPath
+          fromFieldPath: metadata.annotations[crossplane.io/external-name]
+          toFieldPath: status.subnetIds[0]
     
     - name: subnet-public-eu-central-1b
       base:
@@ -110,25 +111,25 @@ spec:
       patches:
         - type: PatchSet
           patchSetName: networkconfig
-          # provide the subnetId for later use as status.subnetIds entry
-        - type: ToCompositeFieldPath
-          fromFieldPath: metadata.annotations[crossplane.io/external-name]
-          toFieldPath: status.subnetIds[1]
           # define eu-central-1b as zone & availabilityZone
-        - type: ToCompositeFieldPath
+        - type: FromCompositeFieldPath
           fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.zone
           transforms:
             - type: string
               string:
                 fmt: "%sb"
-        - type: ToCompositeFieldPath
+        - type: FromCompositeFieldPath
           fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.availabilityZone
           transforms:
             - type: string
               string:
                 fmt: "%sb"
+          # provide the subnetId for later use as status.subnetIds entry
+        - type: ToCompositeFieldPath
+          fromFieldPath: metadata.annotations[crossplane.io/external-name]
+          toFieldPath: status.subnetIds[1]
 
     - name: subnet-public-eu-central-1c
       base:
@@ -148,25 +149,25 @@ spec:
       patches:
         - type: PatchSet
           patchSetName: networkconfig
-          # provide the subnetId for later use as status.subnetIds entry
-        - type: ToCompositeFieldPath
-          fromFieldPath: metadata.annotations[crossplane.io/external-name]
-          toFieldPath: status.subnetIds[2]
           # define eu-central-1c as zone & availabilityZone
-        - type: ToCompositeFieldPath
+        - type: FromCompositeFieldPath
           fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.zone
           transforms:
             - type: string
               string:
                 fmt: "%sc"
-        - type: ToCompositeFieldPath
+        - type: FromCompositeFieldPath
           fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.availabilityZone
           transforms:
             - type: string
               string:
-                fmt: "%sc"   
+                fmt: "%sc"
+          # provide the subnetId for later use as status.subnetIds entry
+        - type: ToCompositeFieldPath
+          fromFieldPath: metadata.annotations[crossplane.io/external-name]
+          toFieldPath: status.subnetIds[2]  
 
     ### SecurityGroups & Rules
     - name: securitygroup-nodepool
@@ -268,7 +269,7 @@ spec:
         - type: PatchSet
           patchSetName: networkconfig
         # define eu-central-1a as subnetIdSelector.matchLabels.zone
-        - type: ToCompositeFieldPath
+        - type: FromCompositeFieldPath
           fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.subnetIdSelector.matchLabels.zone
           transforms:
@@ -292,7 +293,7 @@ spec:
         - type: PatchSet
           patchSetName: networkconfig
         # define eu-central-1b as subnetIdSelector.matchLabels.zone
-        - type: ToCompositeFieldPath
+        - type: FromCompositeFieldPath
           fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.subnetIdSelector.matchLabels.zone
           transforms:
@@ -316,7 +317,7 @@ spec:
         - type: PatchSet
           patchSetName: networkconfig
         # define eu-central-1c as subnetIdSelector.matchLabels.zone
-        - type: ToCompositeFieldPath
+        - type: FromCompositeFieldPath
           fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.subnetIdSelector.matchLabels.zone
           transforms:

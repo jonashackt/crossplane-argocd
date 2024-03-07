@@ -6,7 +6,7 @@ metadata:
     provider: aws
 spec:
   compositeTypeRef:
-    apiVersion: crossplane.jonashackt.io/v1alpha1
+    apiVersion: eks.aws.crossplane.jonashackt.io/v1alpha1
     kind: XEKSCluster
   
   writeConnectionSecretsToNamespace: crossplane-system
@@ -49,10 +49,6 @@ spec:
         - fromFieldPath: spec.parameters.subnetIds
           toFieldPath: spec.forProvider.vpcConfig[0].subnetIds
 
-        # ToCompositeFieldPath patches the patched MR again :)
-        - type: ToCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: status.clusterName
         - type: ToCompositeFieldPath
           fromFieldPath: status.atProvider.status
           toFieldPath: status.clusterStatus    

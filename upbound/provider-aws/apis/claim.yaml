@@ -1,6 +1,6 @@
 ---
 # Use the spec.group/spec.versions[0].name defined in the XRD
-apiVersion: crossplane.jonashackt.io/v1alpha1
+apiVersion: k8s.crossplane.jonashackt.io/v1alpha1
 # Use the spec.claimName or spec.name specified in the XRD
 kind: EKSCluster
 metadata:

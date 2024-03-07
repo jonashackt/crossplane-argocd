@@ -2,17 +2,17 @@ apiVersion: apiextensions.crossplane.io/v1
 kind: CompositeResourceDefinition
 metadata:
   # XRDs must be named 'x<plural>.<group>'
-  name: xeks.aws.crossplane.jonashackt.io
+  name: xeksclusters.eks.aws.crossplane.jonashackt.io
 spec:
   # This XRD defines an XR in the 'crossplane.jonashackt.io' API group.
   # The XR or Claim must use this group together with the spec.versions[0].name as it's apiVersion, like this:
   # 'crossplane.jonashackt.io/v1alpha1'
-  group: crossplane.jonashackt.io
+  group: eks.aws.crossplane.jonashackt.io
   
   # XR names should always be prefixed with an 'X'
   names:
     kind: XEKSCluster
-    plural: xekscluster
+    plural: xeksclusters
   # This type of XR offers a claim, which should have the same name without the 'X' prefix
   claimNames:
     kind: EKSCluster
@@ -70,6 +70,7 @@ spec:
                 - region
                 - nodes
             required:
+            - id
             - parameters
           # defining return values
           status:
