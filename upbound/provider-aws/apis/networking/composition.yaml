@@ -72,6 +72,7 @@ spec:
       patches:
         - type: PatchSet
           patchSetName: networkconfig
+        # provide the subnetId for later use as status.subnetIds entry
         - type: ToCompositeFieldPath
           fromFieldPath: metadata.annotations[crossplane.io/external-name]
           toFieldPath: status.subnetIds[0]
@@ -109,6 +110,7 @@ spec:
       patches:
         - type: PatchSet
           patchSetName: networkconfig
+          # provide the subnetId for later use as status.subnetIds entry
         - type: ToCompositeFieldPath
           fromFieldPath: metadata.annotations[crossplane.io/external-name]
           toFieldPath: status.subnetIds[1]
@@ -146,9 +148,10 @@ spec:
       patches:
         - type: PatchSet
           patchSetName: networkconfig
+          # provide the subnetId for later use as status.subnetIds entry
         - type: ToCompositeFieldPath
           fromFieldPath: metadata.annotations[crossplane.io/external-name]
-          toFieldPath: status.subnetIds[1]
+          toFieldPath: status.subnetIds[2]
           # define eu-central-1c as zone & availabilityZone
         - type: ToCompositeFieldPath
           fromFieldPath: spec.parameters.region
@@ -185,6 +188,10 @@ spec:
           patchSetName: networkconfig
         - fromFieldPath: spec.id
           toFieldPath: metadata.name
+          # provide the securityGroupId for later use as status.securityGroupIds entry
+        - type: ToCompositeFieldPath
+          fromFieldPath: metadata.annotations[crossplane.io/external-name]
+          toFieldPath: status.securityGroupIds[0]
 
     - name: securitygroup-nodepool-rule
       base:
@@ -204,42 +211,6 @@ spec:
 
 
     ### Route Table
-    - name: routetable
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: RouteTable
-        spec:
-          forProvider:
-            vpcIdSelector:
-              matchControllerRef: true
-            routes:
-              - destinationCidrBlock: 0.0.0.0/0
-                gatewayIdSelector:
-                  matchControllerRef: true
-            associations:
-              - subnetIdSelector:
-                  matchControllerRef: true
-                  matchLabels:
-                    zone: us-east-1a
-                    access: public
-              - subnetIdSelector:
-                  matchControllerRef: true
-                  matchLabels:
-                    zone: us-east-1b
-                    access: public
-              - subnetIdSelector:
-                  matchControllerRef: true
-                  matchLabels:
-                    zone: us-east-1c
-                    access: public
-      patches:
-      - type: PatchSet
-        patchSetName: networkconfig
-      - fromFieldPath: spec.id
-        toFieldPath: metadata.name
-
-
-
     - name: routeTable
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1

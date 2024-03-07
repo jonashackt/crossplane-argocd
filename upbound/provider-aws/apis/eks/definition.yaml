@@ -1,4 +1,3 @@
----
 apiVersion: apiextensions.crossplane.io/v1
 kind: CompositeResourceDefinition
 metadata:
@@ -36,16 +35,26 @@ spec:
       openAPIV3Schema:
         type: object
         properties:
+          # defining input parameters
           spec:
             type: object
-            # We define all needed parameters here one has to provide as XR or Claim spec.parameters
             properties:
               id:
                 type: string
                 description: ID of this Cluster that other objects will use to refer to it.
               parameters:
                 type: object
+                description: EKS configuration parameters.
                 properties:
+                  # Using subnetIds & securityGroupIds from XNetworking to configure VPC
+                  subnetIds:
+                    type: array
+                    items:
+                      type: string
+                  securityGroupIds:
+                    type: array
+                    items:
+                      type: string
                   region:
                     type: string
                   nodes:
@@ -60,14 +69,15 @@ spec:
                 required:
                 - region
                 - nodes
-              required:
-              - parameters
-            status:
-              type: object
-              properties:
-                clusterStatus:
-                  description: The status of the control plane
-                  type: string
-                nodePoolStatus:
-                  description: The status of the node pool
-                  type: string
+            required:
+            - parameters
+          # defining return values
+          status:
+            type: object
+            properties:
+              clusterStatus:
+                description: The status of the control plane
+                type: string
+              nodePoolStatus:
+                description: The status of the node pool
+                type: string

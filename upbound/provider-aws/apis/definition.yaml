@@ -20,6 +20,7 @@ spec:
       openAPIV3Schema:
         type: object
         properties:
+          # defining input parameters
           spec:
             type: object
             properties:
@@ -38,6 +39,7 @@ spec:
                         type: integer
                         description: Desired node count, from 1 to 100.
                     required:
+                    - count
                 required:
                 - nodes
             required:

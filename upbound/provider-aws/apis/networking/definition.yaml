@@ -15,6 +15,7 @@ spec:
         openAPIV3Schema:
           type: object
           properties:
+            # defining input parameters
             spec:
               type: object
               properties:
@@ -23,6 +24,7 @@ spec:
                   description: ID of this Network that other objects will use to refer to it.
               required:
                 - id
+            # defining return values
             status:
               type: object
               properties:
