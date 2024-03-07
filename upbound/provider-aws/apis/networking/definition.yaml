@@ -7,6 +7,9 @@ spec:
   names:
     kind: XNetworking
     plural: xnetworkings
+  claimNames:
+    kind: Networking
+    plural: networkings
   versions:
     - name: v1alpha1
       served: true
