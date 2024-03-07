@@ -1291,22 +1291,53 @@ spec:
 Our already present Argo `Application` should be able to automatically pull the new Providers too without further changes
 
 
+
+### The EC2 Networking Composition
+
+Can be found in `upbound/provider-aws/apis/networking`
+
+
+TODO
+
+For the start, let's simply apply our first XRD, Composition and Claim manually like that:
+
+```shell
+# Networking XRD & Composition
+kubectl apply -f upbound/provider-aws/apis/networking/definition.yaml
+kubectl apply -f upbound/provider-aws/apis/networking/composition.yaml
+# Precheck if Network works
+kubectl apply -f upbound/provider-aws/apis/networking/claim.yaml 
+```
+
+
 ### The EKS Cluster Composition
 
 Can be found in `upbound/provider-aws/apis/eks`
 
 
+```shell
+# EKS XRD & Composition
+kubectl apply -f upbound/provider-aws/apis/eks/definition.yaml
+kubectl apply -f upbound/provider-aws/apis/eks/composition.yaml
+```
 
-### The corresponding EC2 Networking Composition
-
-Can be found in `upbound/provider-aws/apis/networking`
-
-
-
-### The nested XR for EKS Cluster & Networking Compositions
+### The nested XR for Networking & EKS Cluster Compositions
 
 Can be found in `upbound/provider-aws/apis`
 
+TODO
+
+
+For the start, let's simply apply our first XRD, Composition and Claim manually like that:
+
+```shell
+# Nested XRD & Composition
+kubectl apply -f upbound/provider-aws/apis/definition.yaml
+kubectl apply -f upbound/provider-aws/apis/composition.yaml
+
+# Check if full Cluster provisioning works
+kubectl apply -f upbound/provider-aws/apis/claim.yaml 
+```
 
 
 ### Add new Compositions to Argo
