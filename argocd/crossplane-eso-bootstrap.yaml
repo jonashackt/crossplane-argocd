@@ -11,7 +11,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: HEAD
+    targetRevision: app-deployment
     path: argocd/crossplane-eso-bootstrap
   destination:
     server: https://kubernetes.default.svc
