@@ -1409,6 +1409,8 @@ For testing we simply use `kubectl apply -f`:
 kubectl apply -f upbound/provider-aws/apis/eks/definition.yaml
 kubectl apply -f upbound/provider-aws/apis/eks/composition.yaml
 
+# If you choose this example (non-nested) claim, be sure to change the subnetIds and securitygroupid according the the Networking claim executed before!
+
 # Precheck if EKSCluster works
 kubectl apply -f upbound/provider-aws/apis/eks/claim.yaml 
 ```
@@ -1478,8 +1480,79 @@ The `Successfully composed resources` message in the event `xekscluster/deploy-t
 
 Can be found in `upbound/provider-aws/apis`
 
-TODO
+* XRD: [`upbound/provider-aws/apis/definition.yaml`](upbound/provider-aws/apis/definition.yaml)
+* Composition: [`upbound/provider-aws/apis/composition.yaml`](upbound/provider-aws/apis/composition.yaml)
 
+With this Composition we're able to use both pre-defined Compositions `XNetworking` and `XEKSCluster` and thus implement a nested Composite Resource:
+
+```yaml
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: kubernetes-cluster
+spec:
+  compositeTypeRef:
+    apiVersion: k8s.crossplane.jonashackt.io/v1alpha1
+    kind: XKubernetesCluster
+  
+  writeConnectionSecretsToNamespace: crossplane-system
+
+  resources:
+    ### Nested use of XNetworking XR
+    - name: compositeNetworkEKS
+      base:
+        apiVersion: net.aws.crossplane.jonashackt.io/v1alpha1
+        kind: XNetworking
+      patches:
+        - fromFieldPath: spec.id
+          toFieldPath: spec.id
+        - fromFieldPath: spec.parameters.region
+          toFieldPath: spec.parameters.region
+        # provide the subnetIds & securityGroupIds for later use
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.subnetIds
+          toFieldPath: status.subnetIds
+          policy:
+            fromFieldPath: Required
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.securityGroupIds
+          toFieldPath: status.securityGroupIds
+          policy:
+            fromFieldPath: Required
+    
+    ### Nested use of XEKSCluster XR
+    - name: compositeClusterEKS
+      base:
+        apiVersion: eks.aws.crossplane.jonashackt.io/v1alpha1
+        kind: XEKSCluster
+      connectionDetails:
+        - fromConnectionSecretKey: kubeconfig
+      patches:
+        - fromFieldPath: spec.id
+          toFieldPath: spec.id
+        - fromFieldPath: spec.id
+          toFieldPath: metadata.annotations[crossplane.io/external-name]
+        - fromFieldPath: metadata.uid
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-eks"
+        - fromFieldPath: spec.writeConnectionSecretToRef.namespace
+          toFieldPath: spec.writeConnectionSecretToRef.namespace
+        - fromFieldPath: spec.parameters.region
+          toFieldPath: spec.parameters.region
+        - fromFieldPath: spec.parameters.nodes.count
+          toFieldPath: spec.parameters.nodes.count
+        - fromFieldPath: status.subnetIds
+          toFieldPath: spec.parameters.subnetIds
+          policy:
+            fromFieldPath: Required
+        - fromFieldPath: status.securityGroupIds
+          toFieldPath: spec.parameters.securityGroupIds
+          policy:
+            fromFieldPath: Required
+```
 
 For the start, let's simply apply our first XRD, Composition and Claim manually like that:
 

@@ -18,6 +18,8 @@ spec:
       patches:
         - fromFieldPath: spec.id
           toFieldPath: spec.id
+        - fromFieldPath: spec.parameters.region
+          toFieldPath: spec.parameters.region
         # provide the subnetIds & securityGroupIds for later use
         - type: ToCompositeFieldPath
           fromFieldPath: status.subnetIds
@@ -50,6 +52,8 @@ spec:
                 fmt: "%s-eks"
         - fromFieldPath: spec.writeConnectionSecretToRef.namespace
           toFieldPath: spec.writeConnectionSecretToRef.namespace
+        - fromFieldPath: spec.parameters.region
+          toFieldPath: spec.parameters.region
         - fromFieldPath: spec.parameters.nodes.count
           toFieldPath: spec.parameters.nodes.count
         - fromFieldPath: status.subnetIds

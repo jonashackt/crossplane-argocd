@@ -4,6 +4,6 @@ metadata:
   namespace: default
   name: deploy-target-eks
 spec:
-  id: deploy-target-eks
+  id: deploy-target-eks # in this example claim, the id MUST match the eks claims id! Otherwise the NodeGroups won't find their subnets
   parameters:
     region: eu-central-1
