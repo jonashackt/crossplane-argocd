@@ -16,7 +16,7 @@ spec:
     patches:
     - type: FromCompositeFieldPath
       fromFieldPath: spec.id
-      toFieldPath: metadata.labels[net.aws.crossplane.jonashackt.io/network-id] # the network-id other components will use
+      toFieldPath: metadata.labels[net.aws.crossplane.jonashackt.io/network-id] # the network-id other Composition MRs (like EKSCluster) will use
     - type: FromCompositeFieldPath
       fromFieldPath: spec.parameters.region
       toFieldPath: spec.forProvider.region
@@ -175,8 +175,8 @@ spec:
         apiVersion: ec2.aws.upbound.io/v1beta1
         kind: SecurityGroup
         metadata:
-          annotations:
-            meta.upbound.io/example-id: ec2/v1beta1/securitygroupegressrule
+          labels:
+            net.aws.crossplane.jonashackt.io: securitygroup
         spec:
           forProvider:
             description: Cluster communication with worker nodes
@@ -207,23 +207,14 @@ spec:
             protocol: tcp
             securityGroupIdSelector:
               matchLabels:
-                testing.upbound.io/example-name: securitygrouprule
+                net.aws.crossplane.jonashackt.io: securitygroup
             toPort: 0
-
-
-    ### Route Table
-    - name: routeTable
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: RouteTable
-        spec:
-          forProvider:
-            vpcIdSelector:
-              matchControllerRef: true
       patches:
-      - type: PatchSet
-        patchSetName: networkconfig
+        - type: PatchSet
+          patchSetName: networkconfig
 
+
+    ### Route, RouteTable & RouteTableAssociations
     - name: route
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
@@ -238,6 +229,18 @@ spec:
       patches:
         - type: PatchSet
           patchSetName: networkconfig
+
+    - name: routeTable
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: RouteTable
+        spec:
+          forProvider:
+            vpcIdSelector:
+              matchControllerRef: true
+      patches:
+      - type: PatchSet
+        patchSetName: networkconfig
 
     - name: mainRouteTableAssociation
       base:

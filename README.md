@@ -1294,10 +1294,10 @@ Our already present Argo `Application` should be able to automatically pull the 
 
 ### The EC2 Networking Composition
 
-Can be found in `upbound/provider-aws/apis/networking`
+Can be found in `upbound/provider-aws/apis/networking`:
 
-
-TODO
+* XRD: [`upbound/provider-aws/apis/eks/definition.yaml`](upbound/provider-aws/apis/eks/definition.yaml)
+* Composition: [`upbound/provider-aws/apis/networking/composition.yaml`](upbound/provider-aws/apis/networking/composition.yaml)
 
 For the start, let's simply apply our first XRD, Composition and Claim manually like that:
 
@@ -1309,10 +1309,99 @@ kubectl apply -f upbound/provider-aws/apis/networking/composition.yaml
 kubectl apply -f upbound/provider-aws/apis/networking/claim.yaml 
 ```
 
+I found that the simplest way to follow what Crossplane is doing, is to look into the events ( via typing `:events`) in k9s:
+
+![](docs/follow-crossplane-events-in-k9s.png)
+
+And simply press `ENTER` to see the actual event message. This helped me a lot in the development process (no need to run `kubectl get crossplane` all the time and manually copy the CRD names to a `kubectl describe xyz-crd`).
+
+
+
+Managed Resources need to reference other Managed Resources. For example, a `SecurityGroupRule` needs to reference a `SecurityGroup`:
+
+```yaml
+...
+    ### SecurityGroups & Rules
+    - name: securitygroup-nodepool
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: SecurityGroup
+        spec:
+          forProvider:
+            description: Cluster communication with worker nodes
+            name: securitygroup-nodepool
+            vpcIdSelector:
+              matchControllerRef: true
+
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+        - fromFieldPath: spec.id
+          toFieldPath: metadata.name
+          # provide the securityGroupId for later use as status.securityGroupIds entry
+        - type: ToCompositeFieldPath
+          fromFieldPath: metadata.annotations[crossplane.io/external-name]
+          toFieldPath: status.securityGroupIds[0]
+
+    - name: securitygroup-nodepool-rule
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: SecurityGroupRule
+        spec:
+          forProvider:
+            type: egress
+            cidrBlocks:
+              - 0.0.0.0/0
+            fromPort: 0
+            protocol: tcp
+            securityGroupIdSelector:
+              matchLabels:
+                net.aws.crossplane.jonashackt.io: securitygroup
+            toPort: 0
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+          ...
+```
+
+In this example, we get the following error in our k8s events:
+
+```shell
+cannot resolve references: mg.Spec.ForProvider.SecurityGroupID: no resources matched selector
+```
+
+https://docs.crossplane.io/latest/concepts/managed-resources/#referencing-other-resources states
+
+> Some fields in a managed resource may depend on values from other managed resources. For example a VM may need the name of a virtual network to use.
+
+> Managed resources can reference other managed resources by external name, name reference or selector.
+
+The problem is, we don't specify the `net.aws.crossplane.jonashackt.io: securitygroup` label on our `SecurityGroup`! Doing that the problem is gone:
+
+```yaml
+        kind: SecurityGroup
+        metadata:
+          labels:
+            net.aws.crossplane.jonashackt.io: securitygroup
+```
+
+
+
+
+
+
+If there is an event showing up containing `Successfully composed resources` in our `eks-vpc-j8s5k` XR.
+
+
 
 ### The EKS Cluster Composition
 
-Can be found in `upbound/provider-aws/apis/eks`
+Can be found in `upbound/provider-aws/apis/eks`:
+
+* XRD: [`upbound/provider-aws/apis/eks/definition.yaml`](upbound/provider-aws/apis/eks/definition.yaml)
+* Composition: [`upbound/provider-aws/apis/eks/composition.yaml`](upbound/provider-aws/apis/eks/composition.yaml)
+
+For testing we simply use `kubectl apply -f`:
 
 
 ```shell
@@ -1323,6 +1412,67 @@ kubectl apply -f upbound/provider-aws/apis/eks/composition.yaml
 # Precheck if EKSCluster works
 kubectl apply -f upbound/provider-aws/apis/eks/claim.yaml 
 ```
+
+Errors in the events like this are normal, since the EKS Cluster needs it's time to be provisioned before NodeGroups etc. can be assigned:
+
+```shell
+cannot resolve references: mg.Spec.ForProvider.ClusterName: referenced field was empty (referenced resource may not yet be ready) 
+```
+
+This also shows up in the AWS console:
+
+![](docs/eks-cluster-initial-provisioning.png)
+
+
+Now if the `NodeGroup` comes up with the following
+
+```shell
+cannot resolve references: mg.Spec.ForProvider.SubnetIds: no resources matched selector 
+```
+
+there's a problem, where the NodeGroup can't find it's SubnetIds.
+
+```yaml
+    - name: nodeGroupPublic
+      base:
+        apiVersion: eks.aws.upbound.io/v1beta1
+        kind: NodeGroup
+        spec:
+          forProvider:
+            clusterNameSelector:
+              matchControllerRef: true
+            nodeRoleArnSelector:
+              matchControllerRef: true
+              matchLabels:
+                role: nodegroup
+            subnetIdSelector:
+              matchLabels:
+                access: public
+            scalingConfig:
+              - minSize: 1
+                maxSize: 10
+                desiredSize: 1
+            instanceTypes: # TODO: we can support to have that parameterized also
+              - t3.medium
+      patches:
+        - type: PatchSet
+          patchSetName: clusterconfig
+        - fromFieldPath: spec.parameters.nodes.count
+          toFieldPath: spec.forProvider.scalingConfig[0].desiredSize
+        - fromFieldPath: spec.id
+          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels[aws.crossplane.jonashackt.io/network-id]
+          ...
+```
+
+That's because the label of all networking components changed to `net.aws.crossplane.jonashackt.io/network-id`. So let's fix that!
+
+Now finally the NodeGroups are correctly assigned to the EKS cluster:
+
+The `Successfully composed resources` message in the event `xekscluster/deploy-target-eks-cb87r` looks promising:
+
+![](docs/eks-cluster-with-nodegroups.png)
+
+
 
 ### The nested XR for Networking & EKS Cluster Compositions
 

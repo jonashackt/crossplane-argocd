@@ -148,9 +148,8 @@ spec:
           patchSetName: clusterconfig
         - fromFieldPath: spec.parameters.nodes.count
           toFieldPath: spec.forProvider.scalingConfig[0].desiredSize
-        # TODO: leave subnetIdSelector like that?
         - fromFieldPath: spec.id
-          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels[aws.crossplane.jonashackt.io/network-id]
+          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels[net.aws.crossplane.jonashackt.io/network-id]
         - type: ToCompositeFieldPath
           fromFieldPath: status.atProvider.status
           toFieldPath: status.nodePoolStatus  

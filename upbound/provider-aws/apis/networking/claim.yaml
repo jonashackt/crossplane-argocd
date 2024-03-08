@@ -2,8 +2,8 @@ apiVersion: net.aws.crossplane.jonashackt.io/v1alpha1
 kind: Networking
 metadata:
   namespace: default
-  name: eks-vpc
+  name: deploy-target-eks
 spec:
-  id: eks-vpc
+  id: deploy-target-eks
   parameters:
     region: eu-central-1

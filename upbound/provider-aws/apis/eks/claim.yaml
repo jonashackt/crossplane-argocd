@@ -7,11 +7,11 @@ spec:
   id: deploy-target-eks
   parameters:
     subnetIds:
-      - subnet-07d9435e0729489f5
-      - subnet-0971c88d89ce422e9
-      - subnet-0b31bbfc5b7153dc3       
+      - subnet-04b3c3cb1f127873c
+      - subnet-0b9ce14c15db2d384
+      - subnet-0cfbc695abf784429     
     securityGroupIds:
-      - sg-075e50ffd3839c608
+      - sg-04f65768e7a9e5aad
     region: eu-central-1
     nodes:
       count: 3
