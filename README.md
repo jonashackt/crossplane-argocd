@@ -43,7 +43,7 @@ Now the `kubectl crossplane --help` command should be ready to use.
 Now spin up a local kind cluster
 
 ```shell
-kind create cluster --image kindest/node:v1.29.0 --wait 5m
+kind create cluster --image kindest/node:v1.29.2 --wait 5m
 ```
 
 
@@ -1288,7 +1288,9 @@ spec:
   revisionHistoryLimit: 1
 ```
 
-Our already present Argo `Application` should be able to automatically pull the new Providers too without further changes
+Our already present Argo `Application` should be able to automatically pull the new Providers too without further changes:
+
+![](docs/multiple-crossplane-provider.png)
 
 
 
@@ -1386,11 +1388,7 @@ The problem is, we don't specify the `net.aws.crossplane.jonashackt.io: security
 ```
 
 
-
-
-
-
-If there is an event showing up containing `Successfully composed resources` in our `eks-vpc-j8s5k` XR.
+There should now be an event showing up containing `Successfully composed resources` in our `eks-vpc-j8s5k` XR.
 
 
 
@@ -1564,6 +1562,31 @@ kubectl apply -f upbound/provider-aws/apis/composition.yaml
 # Check if full Cluster provisioning works
 kubectl apply -f upbound/provider-aws/apis/claim.yaml 
 ```
+
+### Accessing the Crossplane provisioned EKS cluster
+
+https://docs.crossplane.io/knowledge-base/guides/connection-details/
+
+We defined a 
+
+```yaml
+  writeConnectionSecretToRef:
+    name: eks-cluster-kubeconfig
+```
+
+inside our nested claim. This will create a k8s `Secret` called `eks-cluster-kubeconfig`, where the kubeconfig will be stored.
+
+Let's extract the kubeconfig:
+
+```shell
+kubectl get secret eks-cluster-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 --decode
+```
+
+
+
+
+
+
 
 
 ### Add new Compositions to Argo

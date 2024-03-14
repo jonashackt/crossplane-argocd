@@ -169,50 +169,149 @@ spec:
           fromFieldPath: metadata.annotations[crossplane.io/external-name]
           toFieldPath: status.subnetIds[2]  
 
-    ### SecurityGroups & Rules
-    - name: securitygroup-nodepool
+    ### SecurityGroup & SecurityGroupRules Cluster API server
+    - name: securitygroup-cluster
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
         kind: SecurityGroup
         metadata:
           labels:
-            net.aws.crossplane.jonashackt.io: securitygroup
+            net.aws.crossplane.jonashackt.io: securitygroup-cluster
         spec:
           forProvider:
-            description: Cluster communication with worker nodes
-            name: securitygroup-nodepool
+            description: cluster API server access
+            name: securitygroup-cluster
             vpcIdSelector:
               matchControllerRef: true
-
       patches:
         - type: PatchSet
           patchSetName: networkconfig
         - fromFieldPath: spec.id
           toFieldPath: metadata.name
-          # provide the securityGroupId for later use as status.securityGroupIds entry
+          # provide the securityGroupId for later use as status.securityGroupClusterIds entry
         - type: ToCompositeFieldPath
           fromFieldPath: metadata.annotations[crossplane.io/external-name]
-          toFieldPath: status.securityGroupIds[0]
+          toFieldPath: status.securityGroupClusterIds[0]
 
-    - name: securitygroup-nodepool-rule
+    - name: securitygrouprule-cluster-inbound
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
         kind: SecurityGroupRule
         spec:
           forProvider:
-            type: egress
-            cidrBlocks:
-              - 0.0.0.0/0
-            fromPort: 0
+            #description: Allow pods to communicate with the cluster API server & access API server from kubectl clients
+            type: ingress
+            fromPort: 443
+            toPort: 443
             protocol: tcp
             securityGroupIdSelector:
               matchLabels:
-                net.aws.crossplane.jonashackt.io: securitygroup
-            toPort: 0
+                net.aws.crossplane.jonashackt.io: securitygroup-cluster
       patches:
         - type: PatchSet
           patchSetName: networkconfig
 
+    # - name: securitygrouprule-cluster-inbound2
+    #   base:
+    #     apiVersion: ec2.aws.upbound.io/v1beta1
+    #     kind: SecurityGroupIngressRule
+    #     spec:
+    #       forProvider:
+    #         description: Allow pods to communicate with the cluster API server & access API server from kubectl clients
+    #         #cidrIpv4: 0.0.0.0/0 # Source
+    #         fromPort: 443
+    #         toPort: 443
+    #         ipProtocol: tcp
+    #         securityGroupIdSelector:
+    #           matchLabels:
+    #             net.aws.crossplane.jonashackt.io: securitygroup-cluster
+    #   patches:
+    #     - type: PatchSet
+    #       patchSetName: networkconfig
+
+    - name: securitygrouprule-cluster-outbound
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: SecurityGroupRule
+        spec:
+          forProvider:
+            description: Allow internet access from the cluster API server
+            type: egress
+            cidrBlocks: # Destination
+              - 0.0.0.0/0
+            fromPort: 0
+            toPort: 0
+            protocol: tcp
+            securityGroupIdSelector:
+              matchLabels:
+                net.aws.crossplane.jonashackt.io: securitygroup-cluster
+      patches:
+        - type: PatchSet
+          patchSetName: networkconfig
+
+    ### SecurityGroup & SecurityGroupRules Worker Nodes
+    ### The configs are already done by the automatically provisioned SecurityGroup:
+    ### 'EKS created security group applied to ENI that is attached to EKS Control Plane master nodes, as well as any managed workloads.'
+    # - name: securitygroup-nodepool
+    #   base:
+    #     apiVersion: ec2.aws.upbound.io/v1beta1
+    #     kind: SecurityGroup
+    #     metadata:
+    #       labels:
+    #         net.aws.crossplane.jonashackt.io: securitygroup-nodepool
+    #     spec:
+    #       forProvider:
+    #         description: worker nodes access
+    #         name: securitygroup-nodepool
+    #         vpcIdSelector:
+    #           matchControllerRef: true
+    #   patches:
+    #     - type: PatchSet
+    #       patchSetName: networkconfig
+    #     - fromFieldPath: spec.id
+    #       toFieldPath: metadata.name
+    #       # provide the securityGroupId for later use as status.securityGroupNodepoolIds entry
+    #     - type: ToCompositeFieldPath
+    #       fromFieldPath: metadata.annotations[crossplane.io/external-name]
+    #       toFieldPath: status.securityGroupNodepoolIds[0]
+
+    # - name: securitygrouprule-nodepool-inbound
+    #   base:
+    #     apiVersion: ec2.aws.upbound.io/v1beta1
+    #     kind: SecurityGroupRule
+    #     spec:
+    #       forProvider:
+    #         description: Allow nodes to communicate with each other
+    #         type: ingress
+    #         cidrBlocks: # Allow all communictation in the Subnet
+    #           - 10.0.0.0/24
+    #         protocol: all
+    #         securityGroupIdSelector:
+    #           matchLabels:
+    #             net.aws.crossplane.jonashackt.io: securitygroup-nodepool
+    #   patches:
+    #     - type: PatchSet
+    #       patchSetName: networkconfig
+
+    # - name: securitygrouprule-nodepool-outbound
+    #   base:
+    #     apiVersion: ec2.aws.upbound.io/v1beta1
+    #     kind: SecurityGroupRule
+    #     spec:
+    #       forProvider:
+    #         description: Allow internet access from the worker nodes
+    #         type: egress
+    #         cidrBlocks: # Destination
+    #           - 0.0.0.0/0
+    #         fromPort: 0
+    #         toPort: 0
+    #         protocol: tcp
+    #         securityGroupIdSelector:
+    #           matchLabels:
+    #             net.aws.crossplane.jonashackt.io: securitygroup-nodepool
+    #   patches:
+    #     - type: PatchSet
+    #       patchSetName: networkconfig
 
     ### Route, RouteTable & RouteTableAssociations
     - name: route

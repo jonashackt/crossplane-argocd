@@ -43,8 +43,8 @@ spec:
           patchSetName: clusterconfig
         - fromFieldPath: spec.id
           toFieldPath: metadata.name
-        # Using the XNetworking defined securityGroupIds & subnetIds for the vpcConfig
-        - fromFieldPath: spec.parameters.securityGroupIds
+        # Using the XNetworking defined securityGroupClusterIds & subnetIds for the vpcConfig
+        - fromFieldPath: spec.parameters.securityGroupClusterIds
           toFieldPath: spec.forProvider.vpcConfig[0].securityGroupIds
         - fromFieldPath: spec.parameters.subnetIds
           toFieldPath: spec.forProvider.vpcConfig[0].subnetIds

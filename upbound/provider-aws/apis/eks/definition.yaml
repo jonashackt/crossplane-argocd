@@ -46,12 +46,12 @@ spec:
                 type: object
                 description: EKS configuration parameters.
                 properties:
-                  # Using subnetIds & securityGroupIds from XNetworking to configure VPC
+                  # Using subnetIds & securityGroupClusterIds from XNetworking to configure VPC
                   subnetIds:
                     type: array
                     items:
                       type: string
-                  securityGroupIds:
+                  securityGroupClusterIds:
                     type: array
                     items:
                       type: string
@@ -68,7 +68,7 @@ spec:
                     - count
                 required:
                 - subnetIds
-                - securityGroupIds
+                - securityGroupClusterIds
                 - region
                 - nodes
             required:

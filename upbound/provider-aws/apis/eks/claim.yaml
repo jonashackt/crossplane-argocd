@@ -10,7 +10,7 @@ spec:
       - subnet-04b3c3cb1f127873c
       - subnet-0b9ce14c15db2d384
       - subnet-0cfbc695abf784429     
-    securityGroupIds:
+    securityGroupClusterIds:
       - sg-04f65768e7a9e5aad
     region: eu-central-1
     nodes:

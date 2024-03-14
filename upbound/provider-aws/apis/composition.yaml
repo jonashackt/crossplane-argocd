@@ -20,15 +20,15 @@ spec:
           toFieldPath: spec.id
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.parameters.region
-        # provide the subnetIds & securityGroupIds for later use
+        # provide the subnetIds & securityGroupClusterIds for later use
         - type: ToCompositeFieldPath
           fromFieldPath: status.subnetIds
           toFieldPath: status.subnetIds
           policy:
             fromFieldPath: Required
         - type: ToCompositeFieldPath
-          fromFieldPath: status.securityGroupIds
-          toFieldPath: status.securityGroupIds
+          fromFieldPath: status.securityGroupClusterIds
+          toFieldPath: status.securityGroupClusterIds
           policy:
             fromFieldPath: Required
     
@@ -60,7 +60,7 @@ spec:
           toFieldPath: spec.parameters.subnetIds
           policy:
             fromFieldPath: Required
-        - fromFieldPath: status.securityGroupIds
-          toFieldPath: spec.parameters.securityGroupIds
+        - fromFieldPath: status.securityGroupClusterIds
+          toFieldPath: spec.parameters.securityGroupClusterIds
           policy:
             fromFieldPath: Required
