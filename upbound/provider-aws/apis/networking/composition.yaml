@@ -201,6 +201,8 @@ spec:
           forProvider:
             #description: Allow pods to communicate with the cluster API server & access API server from kubectl clients
             type: ingress
+            cidrBlocks:
+              - 0.0.0.0/0
             fromPort: 443
             toPort: 443
             protocol: tcp
@@ -210,24 +212,6 @@ spec:
       patches:
         - type: PatchSet
           patchSetName: networkconfig
-
-    # - name: securitygrouprule-cluster-inbound2
-    #   base:
-    #     apiVersion: ec2.aws.upbound.io/v1beta1
-    #     kind: SecurityGroupIngressRule
-    #     spec:
-    #       forProvider:
-    #         description: Allow pods to communicate with the cluster API server & access API server from kubectl clients
-    #         #cidrIpv4: 0.0.0.0/0 # Source
-    #         fromPort: 443
-    #         toPort: 443
-    #         ipProtocol: tcp
-    #         securityGroupIdSelector:
-    #           matchLabels:
-    #             net.aws.crossplane.jonashackt.io: securitygroup-cluster
-    #   patches:
-    #     - type: PatchSet
-    #       patchSetName: networkconfig
 
     - name: securitygrouprule-cluster-outbound
       base:
