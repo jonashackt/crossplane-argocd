@@ -1563,11 +1563,13 @@ kubectl apply -f upbound/provider-aws/apis/composition.yaml
 kubectl apply -f upbound/provider-aws/apis/claim.yaml 
 ```
 
+
+
 ### Accessing the Crossplane provisioned EKS cluster
 
 https://docs.crossplane.io/knowledge-base/guides/connection-details/
 
-We defined a 
+In our eks cluster [claim](upbound/provider-aws/apis/eks/claim.yaml) we defined a 
 
 ```yaml
   writeConnectionSecretToRef:
@@ -1579,10 +1581,115 @@ inside our nested claim. This will create a k8s `Secret` called `eks-cluster-kub
 Let's extract the kubeconfig:
 
 ```shell
-kubectl get secret eks-cluster-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 --decode
+kubectl get secret eks-cluster-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 --decode > ekskubeconfig
+```
+
+Now integrate the contents of the `ekskubeconfig` file into your `~/.kube/config` (better with VSCode!) and switch over to the new kube context e.g. using https://github.com/ahmetb/kubectx. If you're on the new context of our Crossplane bootstrapped EKS cluster, check if everything works:
+
+```shell
+$ kubectl get nodes
+NAME                                          STATUS   ROLES    AGE   VERSION
+ip-10-0-0-173.eu-central-1.compute.internal   Ready    <none>   34m   v1.29.0-eks-5e0fdde
+ip-10-0-1-149.eu-central-1.compute.internal   Ready    <none>   34m   v1.29.0-eks-5e0fdde
+ip-10-0-2-90.eu-central-1.compute.internal    Ready    <none>   34m   v1.29.0-eks-5e0fdde
 ```
 
 
+
+### Add the new EKS cluster as a new ArgoCD deploy target
+
+https://dev.to/thenjdevopsguy/registering-a-new-cluster-with-argocd-12mn
+
+https://www.padok.fr/en/blog/argocd-eks
+
+https://itnext.io/argocd-setup-external-clusters-by-name-d3d58a53acb0
+
+
+Before using `argocd` CLI, be sure to have logged the CLI into the current argocd-server instance. Therefore have a port forward ready
+
+```shell
+$ kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8080:80
+
+$ argocd login localhost:8080 --username admin --password $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo) --insecure
+'admin:login' logged in successfully
+Context 'localhost:8080' updated
+```
+
+https://argo-cd.readthedocs.io/en/stable/user-guide/commands/argocd_cluster_add/
+
+```shell
+argocd cluster add deploy-target-eks
+```
+
+This will add a few resources to the Target cluster like `ServiceAccount`, `ClusterRole` and `ClusterRoleBinding`:
+
+```shell
+$ argocd cluster add deploy-target-eks
+WARNING: This will create a service account `argocd-manager` on the cluster referenced by context `deploy-target-eks` with full cluster level privileges. Do you want to continue [y/N]? y
+INFO[0002] ServiceAccount "argocd-manager" already exists in namespace "kube-system" 
+INFO[0002] ClusterRole "argocd-manager-role" updated    
+INFO[0002] ClusterRoleBinding "argocd-manager-role-binding" updated 
+Cluster 'https://736F91649BD7B7A70846AD9F8363EDA8.yl4.eu-central-1.eks.amazonaws.com' added
+```
+
+The new cluster becomes visible in the Argo web ui also:
+
+![](docs/argocd-added-new-deploy-target-cluster.png)
+
+
+
+
+### Deploy a app to the newly added target cluster
+
+In order to deploy our example app https://github.com/jonashackt/microservice-api-spring-boot
+
+we need the corresponding Kubernetes deployment manifests, provided by https://github.com/jonashackt/microservice-api-spring-boot-config
+
+Having both in place, we can craft a matching ArgoCD Application:
+
+```yaml
+# The ArgoCD Application for all Crossplane AWS providers incl. it's ProviderConfig
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: microservice-api-spring-boot
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/microservice-api-spring-boot-config
+    targetRevision: HEAD
+    path: deployment
+  destination:
+    namespace: default
+    server: https://736F91649BD7B7A70846AD9F8363EDA8.yl4.eu-central-1.eks.amazonaws.com
+  # Using syncPolicy.automated here, otherwise the deployement of our Crossplane provider will fail with
+  # 'Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3'
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+TODO: server shouldn't be hardcoded - or at least should be injected somehow
+
+Now let's finally deploy our app via:
+
+```shell
+kubectl apply -f argocd/applications/microservice-api-spring-boot.yaml
+```
+
+If everything went fine, our App should be deployed by ArgoCD:
+
+![](docs/first-successful-application-deployment-to-target-eks-cluster.png)
 
 
 
