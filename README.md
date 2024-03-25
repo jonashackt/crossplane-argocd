@@ -1312,7 +1312,53 @@ Now we can apply this `crossplane-apis` Application to our ArgoCD:
 kubectl apply -f argocd/crossplane-apis/crossplane-apis.yaml
 ```
 
+That's pretty cool: Now we see all of our installed APIs as Argo Apps:
 
+![](docs/eks-apis-as-argo-app.png)
+
+
+
+### Crossplane Composite Resource Claims (XRCs) as Argo Application
+
+We should also create a Argo App for our Composite Resource Claims (XRCs), to see our infrastructure beeing deployed visually :)
+
+Therefore we create the ` ` Application argocd/crossplane-resources/crossplane-claims.yaml:
+
+```yaml
+# The ArgoCD Application for all Crossplane Managed Resources
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-claims
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: app-deployment
+    path: upbound/provider-aws/claims
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+Now **this** will deploy our EKS cluster using ArgoCd and our EKS Configuration Package based Nested EKS Composition https://github.com/jonashackt/crossplane-eks-cluster:
+
+```shell
+kubectl apply -f argocd/crossplane-resources/crossplane-claims.yaml
+```
 
 
 
