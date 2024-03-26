@@ -5,5 +5,5 @@ metadata:
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.1.1
   packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
-  revisionActivationPolicy: Manual # Don’t automatically activate a configuration. That should be done by ArgoCD.
+  revisionActivationPolicy: Automatic # Don’t automatically activate a configuration. That should be done by ArgoCD.
   revisionHistoryLimit: 1
