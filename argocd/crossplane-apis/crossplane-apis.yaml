@@ -5,6 +5,8 @@ kind: Application
 metadata:
   name: crossplane-apis
   namespace: argocd
+  labels:
+    crossplane.jonashackt.io: crossplane-api
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

@@ -47,7 +47,11 @@ kind create cluster --image kindest/node:v1.29.2 --wait 5m
 ```
 
 
-### Configure annotation based resource tracking in ArgoCD
+### Configure ArgoCD for Crossplane
+
+https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/
+
+#### Configure annotation based resource tracking in ArgoCD
 
 https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/
 
@@ -64,15 +68,43 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-cm
-  labels:
-    app.kubernetes.io/name: argocd-cm
-    app.kubernetes.io/part-of: argocd
 data:
   application.resourceTrackingMethod: annotation
 ```
 
-But how do we install ArgoCD and change the ConfigMap in a flexible, GitOps-style and renovatebot-enabled way?
 
+### Exclude Crossplane generated ProviderConfigUsage CRDs
+
+https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/#set-resource-exclusion
+
+> Crossplane providers generates a `ProviderConfigUsage` for each of the managed resource (MR) it handles. This resource enable representing the relationship between MR and a ProviderConfig so that the controller can use it as finalizer when a ProviderConfig is deleted. End-users of Crossplane are not expected to interact with this resource.
+
+What this means is that if we have a lot of Crossplane Resources that we work with like in the following image, the ArgoCD UI reactivity can be impacted:
+
+![](docs/crossplane-providerconfigusage-in-argo.png)
+
+And because these resources don't give us anymore insights, we can savely remove them from ArgoCD UI. Therefore we also configure this in the `argocd-cm` ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+data:
+  ...
+  # Set Resource Exclusion (see https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/#set-resource-exclusion)
+  resource.exclusions: |
+    - apiGroups:
+      - "*"
+      kinds:
+      - ProviderConfigUsage      
+```
+
+
+
+
+
+But how do we install ArgoCD and change the ConfigMap in a flexible, GitOps-style and renovatebot-enabled way?
 
 
 ### Install ArgoCD into kind
@@ -645,7 +677,7 @@ Also make sure to have your `Default region` configured as a `env:` variable.
 
 ## Finally provisioning Cloud resources with Crossplane and Argo
 
-Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`upbound/provider-aws/resources/bucket.yaml`](upbound/provider-aws/resources/bucket.yaml) features a super simply example:
+Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`upbound/provider-aws/infrastructure/bucket.yaml`](upbound/provider-aws/infrastructure/bucket.yaml) features a super simply example:
 
 ```yaml
 apiVersion: s3.aws.upbound.io/v1beta1
@@ -660,10 +692,10 @@ spec:
 ```
 
 
-Since we're using Argo, we should deploy our Bucket as Argo Application too. I created a new folder `argocd/crossplane-resources`
+Since we're using Argo, we should deploy our Bucket as Argo Application too. I created a new folder `argocd/infrastructure`
 here, since the Crossplane provisioned infrastructure may not automatically be part of the bootstrap App of Apps.
 
-So here's our Argo Application for all the Crossplane resources that may come: [`argocd/crossplane-resources/crossplane-s3.yaml`](argocd/crossplane-resources/crossplane-managed-s3.yaml):
+So here's our Argo Application for all the Crossplane managed infrastructure that may come: [`argocd/infrastructure/crossplane-s3.yaml`](argocd/infrastructure/crossplane-s3.yaml):
 
 ```yaml
 # The ArgoCD Application for all Crossplane Managed Resources
@@ -671,7 +703,7 @@ So here's our Argo Application for all the Crossplane resources that may come: [
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-managed-s3
+  name: crossplane-s3
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -680,7 +712,7 @@ spec:
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
-    path: upbound/provider-aws/resources
+    path: upbound/provider-aws/infrastructure
   destination:
     namespace: default
     server: https://kubernetes.default.svc
@@ -698,7 +730,7 @@ spec:
 Apply it with:
 
 ```shell
-kubectl apply -f argocd/crossplane-resources/crossplane-managed-s3.yaml
+kubectl apply -f argocd/infrastructure/crossplane-s3.yaml
 ```
 
 If everything went fine, the Argo app should look `Healthy` like this:
@@ -1069,10 +1101,10 @@ Here are all components together we deployed so far using Argo:
 
 ![](docs/bootstrap-finalized-argo-crossplane-eso.png)
 
-Deploying our [`argocd/crossplane-resources/crossplane-managed-s3.yaml`](argocd/crossplane-resources/crossplane-managed-s3.yaml) should also work as expected:
+Deploying our [`argocd/infrastructure/crossplane-s3.yaml`](argocd/infrastructure/crossplane-s3.yaml) should also work as expected:
 
 ```shell
-kubectl apply -f argocd/crossplane-resources/crossplane-managed-s3.yaml
+kubectl apply -f argocd/infrastructure/crossplane-s3.yaml
 ```
 
 If everything went fine, the Argo app should look `Healthy` like this:
@@ -1154,7 +1186,7 @@ Be sure to create `DOPPLER_SERVICE_TOKEN` as GitHub Repository Secrets.
 
 # App Deployment
 
-Let's create a publicly accessible S3 bucket in our upbound/provider-aws/resources/bucket.yaml:
+Let's create a publicly accessible S3 bucket in our upbound/provider-aws/infrastructure/bucket.yaml:
 
 ```yaml
 apiVersion: s3.aws.upbound.io/v1beta1
@@ -1322,7 +1354,7 @@ That's pretty cool: Now we see all of our installed APIs as Argo Apps:
 
 We should also create a Argo App for our EKS cluster Composite Resource Claim to see our infrastructure beeing deployed visually :)
 
-Therefore we create the Application [`argocd/crossplane-resources/crossplane-eks.yaml`](argocd/crossplane-resources/crossplane-eks.yaml):
+Therefore we create the Application [`argocd/infrastructure/crossplane-eks.yaml`](argocd/infrastructure/crossplane-eks.yaml):
 
 ```yaml
 # The ArgoCD Application for all Crossplane Managed Resources
@@ -1339,7 +1371,7 @@ spec:
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: app-deployment
-    path: upbound/provider-aws/resources/eks
+    path: upbound/provider-aws/infrastructure/eks
   destination:
     namespace: default
     server: https://kubernetes.default.svc
@@ -1357,7 +1389,7 @@ spec:
 Now **this** will deploy our EKS cluster using ArgoCD and our EKS Configuration Package based Nested EKS Composition https://github.com/jonashackt/crossplane-eks-cluster:
 
 ```shell
-kubectl apply -f argocd/crossplane-resources/crossplane-eks.yaml
+kubectl apply -f argocd/infrastructure/crossplane-eks.yaml
 ```
 
 

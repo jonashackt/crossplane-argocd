@@ -3,8 +3,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-eks
+  name: crossplane-s3
   namespace: argocd
+  labels:
+    crossplane.jonashackt.io: infrastructure
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -12,7 +14,7 @@ spec:
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: app-deployment
-    path: upbound/provider-aws/resources/eks
+    path: upbound/provider-aws/infrastructure/s3
   destination:
     namespace: default
     server: https://kubernetes.default.svc
