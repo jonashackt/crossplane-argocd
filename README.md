@@ -1355,6 +1355,8 @@ The problem is this error: `Only one reference can have Controller set to true. 
 cannot apply package revision: cannot create object: ProviderRevision.pkg.crossplane.io "provider-aws-ec2-150095bdd614" is invalid: metadata.ownerReferences: Invalid value: []v1.OwnerReference{v1.OwnerReference{APIVersion:"pkg.crossplane.io/v1", Kind:"Provider", Name:"provider-aws-ec2", UID:"30bda236-6c12-412c-a647-b96368eff8b6", Controller:(*bool)(0xc02afeb38c), BlockOwnerDeletion:(*bool)(0xc02afeb38d)}, v1.OwnerReference{APIVersion:"pkg.crossplane.io/v1", Kind:"Provider", Name:"provider-aws-ec2", UID:"ee890f53-7590-4957-8f81-e92b931c4e8d", Controller:(*bool)(0xc02afeb38e), BlockOwnerDeletion:(*bool)(0xc02afeb38f)}}: Only one reference can have Controller set to true. Found "true" in references for Provider/provider-aws-ec2 and Provider/provider-aws-ec2
 ```
 
+Upbound seemed also to have renamed the providers from `provider-aws-ec2` to `upbound-provider-aws-ec2`, which causes the error.
+
 Therefore we should change some options regarding the Provider upgrades in our Provider configurations:
 
 ```yaml
@@ -1365,11 +1367,11 @@ metadata:
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.1.1
   packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
-  revisionActivationPolicy: Manual # Don’t automatically activate a configuration. That should be done by ArgoCD.
+  revisionActivationPolicy: Automatic # Otherwise our Provider never gets activate & healthy
   revisionHistoryLimit: 1
 ```
 
-As we're doing GitOpsified Crossplane with ArgoCD, we should configure the `packagePullPolicy` to `IfNotPresent` instead of `Always` (which means " Check for new packages every minute and download any matching package that isn’t in the cache", see https://docs.crossplane.io/master/concepts/packages/#configuration-package-pull-policy) and the `revisionActivationPolicy` to `Manual` instead of `Automatic` (which means "(default) Automatically activate the last installed configuration.", see https://docs.crossplane.io/master/concepts/packages/#revision-activation-policy).
+As we're doing GitOpsified Crossplane with ArgoCD, we should configure the `packagePullPolicy` to `IfNotPresent` instead of `Always` (which means " Check for new packages every minute and download any matching package that isn’t in the cache", see https://docs.crossplane.io/master/concepts/packages/#configuration-package-pull-policy) - BUT leave the `revisionActivationPolicy` to `Automatic`! Since otherwise, the Provider will never get active and healty! See https://docs.crossplane.io/master/concepts/packages/#revision-activation-policy), but I didn't find it documented that way!
 
 
 
