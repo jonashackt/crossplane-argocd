@@ -663,7 +663,7 @@ spec:
 Since we're using Argo, we should deploy our Bucket as Argo Application too. I created a new folder `argocd/crossplane-resources`
 here, since the Crossplane provisioned infrastructure may not automatically be part of the bootstrap App of Apps.
 
-So here's our Argo Application for all the Crossplane resources that may come: [`argocd/crossplane-resources/crossplane-managed-resources.yaml`](argocd/crossplane-resources/crossplane-managed-resources.yaml):
+So here's our Argo Application for all the Crossplane resources that may come: [`argocd/crossplane-resources/crossplane-s3.yaml`](argocd/crossplane-resources/crossplane-managed-s3.yaml):
 
 ```yaml
 # The ArgoCD Application for all Crossplane Managed Resources
@@ -671,7 +671,7 @@ So here's our Argo Application for all the Crossplane resources that may come: [
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-managed-resources
+  name: crossplane-managed-s3
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -698,7 +698,7 @@ spec:
 Apply it with:
 
 ```shell
-kubectl apply -f argocd/crossplane-resources/crossplane-managed-resources.yaml
+kubectl apply -f argocd/crossplane-resources/crossplane-managed-s3.yaml
 ```
 
 If everything went fine, the Argo app should look `Healthy` like this:
@@ -1069,10 +1069,10 @@ Here are all components together we deployed so far using Argo:
 
 ![](docs/bootstrap-finalized-argo-crossplane-eso.png)
 
-Deploying our [`argocd/crossplane-resources/crossplane-managed-resources.yaml`](argocd/crossplane-resources/crossplane-managed-resources.yaml) should also work as expected:
+Deploying our [`argocd/crossplane-resources/crossplane-managed-s3.yaml`](argocd/crossplane-resources/crossplane-managed-s3.yaml) should also work as expected:
 
 ```shell
-kubectl apply -f argocd/crossplane-resources/crossplane-managed-resources.yaml
+kubectl apply -f argocd/crossplane-resources/crossplane-managed-s3.yaml
 ```
 
 If everything went fine, the Argo app should look `Healthy` like this:
@@ -1320,9 +1320,9 @@ That's pretty cool: Now we see all of our installed APIs as Argo Apps:
 
 ### Crossplane Composite Resource Claims (XRCs) as Argo Application
 
-We should also create a Argo App for our Composite Resource Claims (XRCs), to see our infrastructure beeing deployed visually :)
+We should also create a Argo App for our EKS cluster Composite Resource Claim to see our infrastructure beeing deployed visually :)
 
-Therefore we create the ` ` Application argocd/crossplane-resources/crossplane-claims.yaml:
+Therefore we create the Application [`argocd/crossplane-resources/crossplane-eks.yaml`](argocd/crossplane-resources/crossplane-eks.yaml):
 
 ```yaml
 # The ArgoCD Application for all Crossplane Managed Resources
@@ -1330,7 +1330,7 @@ Therefore we create the ` ` Application argocd/crossplane-resources/crossplane-c
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-claims
+  name: crossplane-eks
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -1339,7 +1339,7 @@ spec:
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: app-deployment
-    path: upbound/provider-aws/claims
+    path: upbound/provider-aws/resources/eks
   destination:
     namespace: default
     server: https://kubernetes.default.svc
@@ -1354,10 +1354,10 @@ spec:
         maxDuration: 1m
 ```
 
-Now **this** will deploy our EKS cluster using ArgoCd and our EKS Configuration Package based Nested EKS Composition https://github.com/jonashackt/crossplane-eks-cluster:
+Now **this** will deploy our EKS cluster using ArgoCD and our EKS Configuration Package based Nested EKS Composition https://github.com/jonashackt/crossplane-eks-cluster:
 
 ```shell
-kubectl apply -f argocd/crossplane-resources/crossplane-claims.yaml
+kubectl apply -f argocd/crossplane-resources/crossplane-eks.yaml
 ```
 
 
@@ -1403,6 +1403,17 @@ The new cluster becomes visible in the Argo web ui also:
 ![](docs/argocd-added-new-deploy-target-cluster.png)
 
 
+
+### Add new EKS clusters declaratively to ArgoCD
+
+Is there only the `argocd cluster add` command or could we achieve that using a manifest?
+
+https://github.com/argoproj/argo-cd/issues/8107
+
+
+Maybe the Crossplane ArgoCD Provider has the crucial Manifest for us? See https://github.com/crossplane-contrib/provider-argocd/issues/18 and https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1
+
+And also https://github.com/crossplane-contrib/provider-argocd/issues/13
 
 
 
