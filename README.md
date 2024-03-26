@@ -1355,8 +1355,6 @@ The problem is this error: `Only one reference can have Controller set to true. 
 cannot apply package revision: cannot create object: ProviderRevision.pkg.crossplane.io "provider-aws-ec2-150095bdd614" is invalid: metadata.ownerReferences: Invalid value: []v1.OwnerReference{v1.OwnerReference{APIVersion:"pkg.crossplane.io/v1", Kind:"Provider", Name:"provider-aws-ec2", UID:"30bda236-6c12-412c-a647-b96368eff8b6", Controller:(*bool)(0xc02afeb38c), BlockOwnerDeletion:(*bool)(0xc02afeb38d)}, v1.OwnerReference{APIVersion:"pkg.crossplane.io/v1", Kind:"Provider", Name:"provider-aws-ec2", UID:"ee890f53-7590-4957-8f81-e92b931c4e8d", Controller:(*bool)(0xc02afeb38e), BlockOwnerDeletion:(*bool)(0xc02afeb38f)}}: Only one reference can have Controller set to true. Found "true" in references for Provider/provider-aws-ec2 and Provider/provider-aws-ec2
 ```
 
-Upbound seemed also to have renamed the providers from `provider-aws-ec2` to `upbound-provider-aws-ec2`, which causes the error.
-
 Therefore we should change some options regarding the Provider upgrades in our Provider configurations:
 
 ```yaml
@@ -1373,6 +1371,50 @@ spec:
 
 As we're doing GitOpsified Crossplane with ArgoCD, we should configure the `packagePullPolicy` to `IfNotPresent` instead of `Always` (which means " Check for new packages every minute and download any matching package that isn’t in the cache", see https://docs.crossplane.io/master/concepts/packages/#configuration-package-pull-policy) - BUT leave the `revisionActivationPolicy` to `Automatic`! Since otherwise, the Provider will never get active and healty! See https://docs.crossplane.io/master/concepts/packages/#revision-activation-policy), but I didn't find it documented that way!
 
+
+#### GitOpsified Provider Upgrade
+
+Now with `packagePullPolicy: IfNotPresent` & `revisionActivationPolicy: Automatic` to do a Provider version upgrade, we simply need to upgrade the `spec.package` version number:
+
+```yaml
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.2.1 # --> Upgraded to 1.2.1
+  packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
+  revisionActivationPolicy: Automatic # Otherwise our Provider never gets activate & healthy
+  revisionHistoryLimit: 1
+```
+
+We need to commit the change as always, but also be a bit patient here with Argo and Crossplane to initiate and do the update for us. Look at a `kubectl get providerrevisions`. Even after the update commited and registered by Argo, Crossplane will take it's time. First it looks like this:
+
+```shell
+k get providerrevisions
+NAME                                       HEALTHY   REVISION   IMAGE                                                STATE      DEP-FOUND   DEP-INSTALLED   AGE
+provider-aws-ec2-3d66ea2d7903              True      1          xpkg.upbound.io/upbound/provider-aws-ec2:v1.2.1      Active     1           1               5m31s
+provider-aws-eks-5021e69b327c              True      2          xpkg.upbound.io/upbound/provider-aws-eks:v1.2.1      Inactive   1           1               4m11s
+provider-aws-eks-fbb6768e46c0              True      3          xpkg.upbound.io/upbound/provider-aws-eks:v1.1.1      Active     1           1               30m
+provider-aws-iam-9565c6312cd0              True      1          xpkg.upbound.io/upbound/provider-aws-iam:v1.1.1      Active     1           1               30m
+provider-aws-s3-6ca829a5198b               True      1          xpkg.upbound.io/upbound/provider-aws-s3:v1.1.1       Active     1           1               30m
+upbound-provider-family-aws-7cc64a779806   True      1          xpkg.upbound.io/upbound/provider-family-aws:v1.2.1   Active                                 30m
+```
+
+Now after a while and some events (look at them in `k9s` for example):
+
+![](docs/upgrade-provider-k9s-events.png)
+
+Some time later the new Provider version should be the `Active` one:
+
+```shell
+k get providerrevisions
+NAME                                       HEALTHY   REVISION   IMAGE                                                STATE      DEP-FOUND   DEP-INSTALLED   AGE
+provider-aws-ec2-3d66ea2d7903              True      1          xpkg.upbound.io/upbound/provider-aws-ec2:v1.2.1      Active     1           1               6m52s
+provider-aws-eks-5021e69b327c              True      4          xpkg.upbound.io/upbound/provider-aws-eks:v1.2.1      Active     1           1               5m32s
+provider-aws-eks-fbb6768e46c0              True      3          xpkg.upbound.io/upbound/provider-aws-eks:v1.1.1      Inactive   1           1               31m
+provider-aws-iam-9565c6312cd0              True      1          xpkg.upbound.io/upbound/provider-aws-iam:v1.1.1      Active     1           1               31m
+provider-aws-s3-6ca829a5198b               True      1          xpkg.upbound.io/upbound/provider-aws-s3:v1.1.1       Active     1           1               31m
+upbound-provider-family-aws-7cc64a779806   True      1          xpkg.upbound.io/upbound/provider-family-aws:v1.2.1   Active                                 31m
+```
+
+And luckily without any errors like mentioned above!
 
 
 
