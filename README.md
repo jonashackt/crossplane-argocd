@@ -358,7 +358,7 @@ metadata:
 spec:
   project: default
   source:
-    path: upbound/provider-aws-s3/config
+    path: upbound/provider-aws/config
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
   destination:
@@ -403,7 +403,7 @@ The Kubernetes API could not find aws.upbound.io/ProviderConfig for requested re
 
 ### Install crossplane's AWS provider ProviderConfig with ArgoCD
 
-To get our Provider finally working we also need to create a `ProviderConfig` accordingly that will tell the Provider where to find it's AWS credentials. Therefore we create a [upbound/provider-aws-s3/config/provider-aws-config.yaml](upbound/provider-aws-s3/config/provider-aws-config.yaml):
+To get our Provider finally working we also need to create a `ProviderConfig` accordingly that will tell the Provider where to find it's AWS credentials. Therefore we create a [upbound/provider-aws/config/provider-aws-config.yaml](upbound/provider-aws/config/provider-aws-config.yaml):
 
 ```yaml
 apiVersion: aws.upbound.io/v1beta1
@@ -424,7 +424,7 @@ spec:
 The `secretRef.name` and `secretRef.key` has to match the fields of the already created Secret.
 
 
-To let ArgoCD manage and deploy our `ProviderConfig` we again create a new ArgoCD `Application` CRD at [argocd/crossplane-bootstrap/crossplane-provider-aws-config.yaml](argocd/crossplane-bootstrap/crossplane-provider-aws-config.yaml) [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/), which tells Argo to look in the directory path `upbound/provider-aws-s3/config`:
+To let ArgoCD manage and deploy our `ProviderConfig` we again create a new ArgoCD `Application` CRD at [argocd/crossplane-bootstrap/crossplane-provider-aws-config.yaml](argocd/crossplane-bootstrap/crossplane-provider-aws-config.yaml) [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/), which tells Argo to look in the directory path `upbound/provider-aws/config`:
 
 
 ```yaml
@@ -438,7 +438,7 @@ metadata:
 spec:
   project: default
   source:
-    path: upbound/provider-aws-s3/config
+    path: upbound/provider-aws/config
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
   destination:
@@ -1279,11 +1279,106 @@ https://thenewstack.io/gitops-as-an-evolution-of-kubernetes/
 
 
 
+## Deploy an EKS Cluster
+
+### Multiple AWS Providers as ArgoCD Application
+
+To be able to deploy a [nested Composition like this for EKS](https://github.com/jonashackt/crossplane-eks-cluster) we need to install multiple Crossplane Providers: `provider-aws-ec2`, `provider-aws-eks`, `provider-aws-iam` additionally to our already installed `provider-aws-s3`. Therefore we should enhance our concept on how to install a Provider with ArgoCD!
+
+Since every Upbound provider family has one ProviderConfig to access the credentials, but multiple providers, it would make sense to enhance the Argo Application `argocd/crossplane-bootstrap/crossplane-provider-aws.yaml` to support multiple providers:
+
+```yaml
+# The ArgoCD Application for all Crossplane AWS providers incl. it's ProviderConfig
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: provider-aws
+  namespace: argocd
+  labels:
+    crossplane.jonashackt.io: crossplane
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: HEAD
+    path: upbound/provider-aws/provider
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  # Using syncPolicy.automated here, otherwise the deployement of our Crossplane provider will fail with
+  # 'Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3'
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+Thus this Application simply references the folder `upbound/provider-aws/provider`, where all the `Provider` manifests can be stored:
+
+```shell
+└── provider-aws
+    ...
+    ├── config
+    │   └── provider-config-aws.yaml
+    ...
+    └── provider
+        ├── provider-aws-ec2.yaml
+        ├── provider-aws-eks.yaml
+        ├── provider-aws-iam.yaml
+        └── provider-aws-s3.yaml
+```
+
+Now in Argo, the Application shows all available Crossplane providers:
+
+![](docs/multiple-crossplane-provider.png)
+
+
+#### Provider Upgrade problems: 'Only one reference can have Controller set to true'
+
+If new Provider versions get released, you can watch Argo trying to deploy the old version vs. Crossplane deploying the new one, which leads so a `degraded` status of the Providers:
+
+![](docs/degraded-aws-providers.png)
+
+The problem is this error: `Only one reference can have Controller set to true. Found "true" in references for Provider/provider-aws-ec2 and Provider/provider-aws-ec2`:
+
+```shell
+cannot apply package revision: cannot create object: ProviderRevision.pkg.crossplane.io "provider-aws-ec2-150095bdd614" is invalid: metadata.ownerReferences: Invalid value: []v1.OwnerReference{v1.OwnerReference{APIVersion:"pkg.crossplane.io/v1", Kind:"Provider", Name:"provider-aws-ec2", UID:"30bda236-6c12-412c-a647-b96368eff8b6", Controller:(*bool)(0xc02afeb38c), BlockOwnerDeletion:(*bool)(0xc02afeb38d)}, v1.OwnerReference{APIVersion:"pkg.crossplane.io/v1", Kind:"Provider", Name:"provider-aws-ec2", UID:"ee890f53-7590-4957-8f81-e92b931c4e8d", Controller:(*bool)(0xc02afeb38e), BlockOwnerDeletion:(*bool)(0xc02afeb38f)}}: Only one reference can have Controller set to true. Found "true" in references for Provider/provider-aws-ec2 and Provider/provider-aws-ec2
+```
+
+Therefore we should change some options regarding the Provider upgrades in our Provider configurations:
+
+```yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-ec2
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.1.1
+  packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
+  revisionActivationPolicy: Manual # Don’t automatically activate a configuration. That should be done by ArgoCD.
+  revisionHistoryLimit: 1
+```
+
+As we're doing GitOpsified Crossplane with ArgoCD, we should configure the `packagePullPolicy` to `IfNotPresent` instead of `Always` (which means " Check for new packages every minute and download any matching package that isn’t in the cache", see https://docs.crossplane.io/master/concepts/packages/#configuration-package-pull-policy) and the `revisionActivationPolicy` to `Manual` instead of `Automatic` (which means "(default) Automatically activate the last installed configuration.", see https://docs.crossplane.io/master/concepts/packages/#revision-activation-policy).
+
+
+
+
 ### Using the EKS Nested Composition as Configuration Package
 
 I offloaded all the EKS Nested Composition as a separate repository, which publishes a Crossplane Configuration Package as OCI image: https://github.com/jonashackt/crossplane-eks-cluster
 
-Therefore we should be able to use it via the following Configuration:
+We should be able to use it via the following Configuration:
 
 ```yaml
 apiVersion: pkg.crossplane.io/v1

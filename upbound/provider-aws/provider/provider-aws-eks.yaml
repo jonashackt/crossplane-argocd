@@ -4,6 +4,6 @@ metadata:
   name: provider-aws-eks
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-eks:v1.1.1
-  packagePullPolicy: Always
-  revisionActivationPolicy: Automatic
+  packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
+  revisionActivationPolicy: Manual # Don’t automatically activate a configuration. That should be done by ArgoCD.
   revisionHistoryLimit: 1
