@@ -351,7 +351,7 @@ How do we let ArgoCD manage and deploy this to our cluster? The simple way of [d
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: provider-aws-s3
+  name: crossplane-provider-aws-s3
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -1293,7 +1293,7 @@ Since every Upbound provider family has one ProviderConfig to access the credent
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: provider-aws
+  name: crossplane-provider-aws
   namespace: argocd
   labels:
     crossplane.jonashackt.io: crossplane
