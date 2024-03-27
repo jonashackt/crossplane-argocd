@@ -337,7 +337,7 @@ Our crossplane AWS provider reside in [upbound/provider-aws-s3/config/provider-a
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-aws-s3
+  name: upbound-provider-aws-s3
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-s3:v0.46.0
   packagePullPolicy: Always
@@ -1361,7 +1361,7 @@ Therefore we should change some options regarding the Provider upgrades in our P
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-aws-ec2
+  name: upbound-provider-aws-ec2
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.1.1
   packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
@@ -1583,10 +1583,71 @@ Is there only the `argocd cluster add` command or could we achieve that using a 
 
 https://github.com/argoproj/argo-cd/issues/8107
 
-
 Maybe the Crossplane ArgoCD Provider has the crucial Manifest for us? See https://github.com/crossplane-contrib/provider-argocd/issues/18 and https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1
 
-And also https://github.com/crossplane-contrib/provider-argocd/issues/13
+
+You might already wondered, what the Crossplane ArgoCD provider is about: https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd
+
+With this we can create a [`Cluster`](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1) which is able to represent the EKS cluster we just created. 
+
+Then we create a ArgoCD App [`Project`](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/projects.argocd.crossplane.io/Project/v1alpha1) which references the Cluster, and which itself can be referenced again by an ArgoCD Application managing our Spring Boot application we finally want to deploy.
+
+
+#### Install Crossplane ArgoCD Provider
+
+So let's install the Crossplane ArgoCD provider, which is a community contribution project. Thus we create the `crossplane-contrib` folder, where under `provider-argocd` the new Provider should reside:
+
+```yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-argocd
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/provider-argocd:v0.6.0
+  packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
+  revisionActivationPolicy: Automatic # Otherwise our Provider never gets activate & healthy
+  revisionHistoryLimit: 1
+```
+
+As we want to manage the Provider also using Argo, we need to create a new Argo Application:
+
+```yaml
+# The ArgoCD Application for all Crossplane Community contribution Providers needed in the setup
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-provider-contrib
+  namespace: argocd
+  labels:
+    crossplane.jonashackt.io: crossplane
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: app-deployment
+    path: crossplane-contrib
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  # Using syncPolicy.automated here, otherwise the deployement of our Crossplane provider will fail with
+  # 'Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3'
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+
 
 
 
