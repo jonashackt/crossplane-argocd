@@ -1,7 +1,7 @@
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-aws-eks
+  name: upbound-provider-aws-eks
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-eks:v1.2.1
   packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
