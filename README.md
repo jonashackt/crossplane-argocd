@@ -695,7 +695,7 @@ spec:
 Since we're using Argo, we should deploy our Bucket as Argo Application too. I created a new folder `argocd/infrastructure`
 here, since the Crossplane provisioned infrastructure may not automatically be part of the bootstrap App of Apps.
 
-So here's our Argo Application for all the Crossplane managed infrastructure that may come: [`argocd/infrastructure/crossplane-s3.yaml`](argocd/infrastructure/crossplane-s3.yaml):
+So here's our Argo Application for all the Crossplane managed infrastructure that may come: [`argocd/infrastructure/aws-s3.yaml`](argocd/infrastructure/aws-s3.yaml):
 
 ```yaml
 # The ArgoCD Application for all Crossplane Managed Resources
@@ -730,7 +730,7 @@ spec:
 Apply it with:
 
 ```shell
-kubectl apply -f argocd/infrastructure/crossplane-s3.yaml
+kubectl apply -f argocd/infrastructure/aws-s3.yaml
 ```
 
 If everything went fine, the Argo app should look `Healthy` like this:
@@ -1101,10 +1101,10 @@ Here are all components together we deployed so far using Argo:
 
 ![](docs/bootstrap-finalized-argo-crossplane-eso.png)
 
-Deploying our [`argocd/infrastructure/crossplane-s3.yaml`](argocd/infrastructure/crossplane-s3.yaml) should also work as expected:
+Deploying our [`argocd/infrastructure/aws-s3.yaml`](argocd/infrastructure/aws-s3.yaml) should also work as expected:
 
 ```shell
-kubectl apply -f argocd/infrastructure/crossplane-s3.yaml
+kubectl apply -f argocd/infrastructure/aws-s3.yaml
 ```
 
 If everything went fine, the Argo app should look `Healthy` like this:
@@ -1345,7 +1345,7 @@ Now in Argo, the Application shows all available Crossplane providers:
 
 #### Provider Upgrade problems: 'Only one reference can have Controller set to true'
 
-If new Provider versions get released, you can watch Argo trying to deploy the old version vs. Crossplane deploying the new one, which leads so a `degraded` status of the Providers:
+If new Provider versions get released, you can watch Argo trying to deploy the old version vs. Crossplane deploying the new one, which leads to a `degraded` status of the Providers:
 
 ![](docs/degraded-aws-providers.png)
 
@@ -1373,6 +1373,8 @@ As we're doing GitOpsified Crossplane with ArgoCD, we should configure the `pack
 
 
 #### GitOpsified Provider Upgrade
+
+See also https://stackoverflow.com/a/78230499/4964553
 
 Now with `packagePullPolicy: IfNotPresent` & `revisionActivationPolicy: Automatic` to do a Provider version upgrade, we simply need to upgrade the `spec.package` version number:
 
@@ -1493,7 +1495,7 @@ That's pretty cool: Now we see all of our installed APIs as Argo Apps:
 
 We should also create a Argo App for our EKS cluster Composite Resource Claim to see our infrastructure beeing deployed visually :)
 
-Therefore we create the Application [`argocd/infrastructure/crossplane-eks.yaml`](argocd/infrastructure/crossplane-eks.yaml):
+Therefore we create the Application [`argocd/infrastructure/aws-eks.yaml`](argocd/infrastructure/aws-eks.yaml):
 
 ```yaml
 # The ArgoCD Application for all Crossplane Managed Resources
@@ -1528,7 +1530,7 @@ spec:
 Now **this** will deploy our EKS cluster using ArgoCD and our EKS Configuration Package based Nested EKS Composition https://github.com/jonashackt/crossplane-eks-cluster:
 
 ```shell
-kubectl apply -f argocd/infrastructure/crossplane-eks.yaml
+kubectl apply -f argocd/infrastructure/aws-eks.yaml
 ```
 
 
