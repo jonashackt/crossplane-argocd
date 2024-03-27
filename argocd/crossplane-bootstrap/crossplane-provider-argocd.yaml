@@ -3,7 +3,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-provider-contrib
+  name: crossplane-provider-argocd
   namespace: argocd
   labels:
     crossplane.jonashackt.io: crossplane
@@ -16,7 +16,7 @@ spec:
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: app-deployment
-    path: crossplane-contrib
+    path: crossplane-contrib/provider-argocd/provider
   destination:
     namespace: default
     server: https://kubernetes.default.svc
