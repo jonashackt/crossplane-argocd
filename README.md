@@ -1595,7 +1595,7 @@ Then we create a ArgoCD App [`Project`](https://marketplace.upbound.io/providers
 
 #### Install Crossplane ArgoCD Provider
 
-So let's install the Crossplane ArgoCD provider, which is a community contribution project. Thus we create the `crossplane-contrib` folder, where under `provider-argocd` the new Provider should reside:
+So let's install the Crossplane ArgoCD provider, which is a community contribution project. Thus we create the `crossplane-contrib` folder, where the new Provider should reside as `provider-argocd.yaml`:
 
 ```yaml
 apiVersion: pkg.crossplane.io/v1
@@ -1647,6 +1647,11 @@ spec:
         maxDuration: 1m
 ```
 
+Apply it via the ususal bootstrap setup:
+
+```shell
+kubectl apply -f argocd/crossplane-eso-bootstrap.yaml
+```
 
 
 
