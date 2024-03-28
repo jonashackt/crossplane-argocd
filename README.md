@@ -1730,6 +1730,11 @@ Now we finally create an API token without expiration that can be used by `provi
 ARGOCD_API_TOKEN=$(curl -s -X POST -k -H "Authorization: Bearer $ARGOCD_ADMIN_TOKEN" -H "Content-Type: application/json" https://localhost:8443/api/v1/account/provider-argocd/token | jq -r .token)
 ```
 
+You can double check in the ArgoCD UI at `Settings/Accounts` if the Token got created:
+
+![](docs/provider-argocd-api-token-created.png)
+
+
 __TODO: Add to GitHub Actions workflows!__
 
 
@@ -1801,9 +1806,9 @@ spec:
 ```
 
 
+#### Create a Cluster in ArgoCD referencing our Crossplane created EKS cluster
 
-
-#### Create a Cluster 
+Now we're where we wanted to be: We can finally create a Cluster in ArgoCD referencing the Crossplane created EKS cluster. Therefore we make use of the [Crossplane ArgoCD Providers Cluster CRD](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1):
 
 ```yaml
 apiVersion: cluster.argocd.crossplane.io/v1alpha1
@@ -1814,15 +1819,17 @@ metadata:
     purpose: dev
 spec:
   forProvider:
+    name: deploy-target-eks # name of the Cluster registered in ArgoCD
     config:
       kubeconfigSecretRef:
         key: kubeconfig
-        name: eks-cluster-kubeconfig
+        name: eks-cluster-kubeconfig # Secret containing our kubeconfig to access the Crossplane created EKS cluster
         namespace: default
-  # providerConfigRef:
-  #   name: argocd-provider
+  providerConfigRef:
+    name: argocd-provider
 ```
 
+The `providerConfigRef.name.argocd-provider` references our `ProviderConfig`, which gives the Crossplane ArgoCD Provider the rights (via our API Token) to change the ArgoCD Server configuration (and thus add a new Cluster).
 
 As the docs state https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1
 
@@ -1832,6 +1839,23 @@ As the docs state https://marketplace.upbound.io/providers/crossplane-contrib/pr
 
 The Secret containing the exact EKS kubeconfig is named `eks-cluster-kubeconfig` by our EKS Configuration and resides in the `default` namespace.
 
+Let's create the Cluster manually for now:
+
+```shell
+kubectl apply -f resources/eks/cluster.yaml
+```
+
+If everything went correctly, a `kubectl get cluster` should state READY and SYNCED as `True`:
+
+```shell
+kubectl get cluster
+NAME                               READY   SYNCED   AGE
+argo-reference-deploy-target-eks   True    True     21s
+```
+
+And also in the ArgoCD UI you should find the newly registerd Cluster now at `Settings/Clusters`:
+
+![](docs/cluster-in-argocd-referencing-crossplane-created-eks-cluster.png)
 
 
 #### Create a Application 
