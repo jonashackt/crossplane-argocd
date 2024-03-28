@@ -49,9 +49,9 @@ jobs:
           echo "--- Create AWS Provider secret"
           kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./aws-creds.conf
 
-      - name: Prepare Secret with ARGOCD_API_TOKEN for Crossplane ArgoCD Provider
+      - name: Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider
         run: |
-          echo "--- Access the ArgoCD server"
+          echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553"
           kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443 &
           
           echo "--- Extract ArgoCD password"
@@ -60,7 +60,7 @@ jobs:
           echo "--- Create temporary JWT token for the `provider-argocd` user"
           ARGOCD_ADMIN_TOKEN=$(curl -s -X POST -k -H "Content-Type: application/json" --data '{"username":"admin","password":"'$ARGOCD_ADMIN_SECRET'"}' https://localhost:8443/api/v1/session | jq -r .token)
           
-          echo "--- Create ArgoCD API token"
+          echo "--- Create ArgoCD API Token"
           ARGOCD_API_TOKEN=$(curl -s -X POST -k -H "Authorization: Bearer $ARGOCD_ADMIN_TOKEN" -H "Content-Type: application/json" https://localhost:8443/api/v1/account/provider-argocd/token | jq -r .token)
 
           echo "--- Create Secret containing the ARGOCD_API_TOKEN for Crossplane ArgoCD Provider"

@@ -1740,7 +1740,26 @@ You can double check in the ArgoCD UI at `Settings/Accounts` if the Token got cr
 ![](docs/provider-argocd-api-token-created.png)
 
 
-__TODO: Add to GitHub Actions workflows!__
+I also added all these steps to our GitHub Actions workflow. There's only one difference: running the `kubectl port-forward` command with a attached ` &` to have that port forward run in the background (see https://stackoverflow.com/a/72983554/4964553):
+
+```yaml
+      - name: Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider
+        run: |
+          echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553"
+          kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443 &
+          
+          echo "--- Extract ArgoCD password"
+          ARGOCD_ADMIN_SECRET=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo)
+
+          echo "--- Create temporary JWT token for the `provider-argocd` user"
+          ARGOCD_ADMIN_TOKEN=$(curl -s -X POST -k -H "Content-Type: application/json" --data '{"username":"admin","password":"'$ARGOCD_ADMIN_SECRET'"}' https://localhost:8443/api/v1/session | jq -r .token)
+          
+          echo "--- Create ArgoCD API Token"
+          ARGOCD_API_TOKEN=$(curl -s -X POST -k -H "Authorization: Bearer $ARGOCD_ADMIN_TOKEN" -H "Content-Type: application/json" https://localhost:8443/api/v1/account/provider-argocd/token | jq -r .token)
+
+          echo "--- Create Secret containing the ARGOCD_API_TOKEN for Crossplane ArgoCD Provider"
+          kubectl create secret generic argocd-credentials -n crossplane-system --from-literal=authToken="$ARGOCD_API_TOKEN"
+```
 
 
 
