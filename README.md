@@ -677,7 +677,7 @@ Also make sure to have your `Default region` configured as a `env:` variable.
 
 ## Finally provisioning Cloud resources with Crossplane and Argo
 
-Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`upbound/provider-aws/infrastructure/bucket.yaml`](upbound/provider-aws/infrastructure/bucket.yaml) features a super simply example:
+Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`infrastructure/bucket.yaml`](infrastructure/bucket.yaml) features a super simply example:
 
 ```yaml
 apiVersion: s3.aws.upbound.io/v1beta1
@@ -712,7 +712,7 @@ spec:
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
-    path: upbound/provider-aws/infrastructure
+    path: infrastructure
   destination:
     namespace: default
     server: https://kubernetes.default.svc
@@ -1186,7 +1186,7 @@ Be sure to create `DOPPLER_SERVICE_TOKEN` as GitHub Repository Secrets.
 
 # App Deployment
 
-Let's create a publicly accessible S3 bucket in our upbound/provider-aws/infrastructure/bucket.yaml:
+Let's create a publicly accessible S3 bucket in our infrastructure/bucket.yaml:
 
 ```yaml
 apiVersion: s3.aws.upbound.io/v1beta1
@@ -1491,6 +1491,33 @@ That's pretty cool: Now we see all of our installed APIs as Argo Apps:
 
 
 
+### Craft a Composite Resource Claim (XRC) to provision an EKS cluster
+
+Now we use our installed APIs to create a Claim in [`infrastructure/eks/deploy-target-eks.yaml`](infrastructure/eks/deploy-target-eks.yaml):
+
+```yaml
+# Use the spec.group/spec.versions[0].name defined in the XRD
+apiVersion: k8s.crossplane.jonashackt.io/v1alpha1
+# Use the spec.claimName or spec.name specified in the XRD
+kind: KubernetesCluster
+metadata:
+  namespace: default
+  name: deploy-target-eks
+spec:
+  id: deploy-target-eks
+  parameters:
+    region: eu-central-1
+    nodes:
+      count: 3
+  # Crossplane creates the secret object in the same namespace as the Claim
+  # see https://docs.crossplane.io/latest/concepts/claims/#claim-connection-secrets
+  writeConnectionSecretToRef:
+    name: eks-cluster-kubeconfig
+```
+
+Don't apply it directly, we'll create a Argo App in a second.
+
+
 ### Crossplane Composite Resource Claims (XRCs) as Argo Application
 
 We should also create a Argo App for our EKS cluster Composite Resource Claim to see our infrastructure beeing deployed visually :)
@@ -1512,7 +1539,7 @@ spec:
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: app-deployment
-    path: upbound/provider-aws/infrastructure/eks
+    path: infrastructure/eks
   destination:
     namespace: default
     server: https://kubernetes.default.svc
@@ -1591,14 +1618,11 @@ Maybe the Crossplane ArgoCD Provider has the crucial Manifest for us? See https:
 
 You might already wondered, what the Crossplane ArgoCD provider is about: https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd
 
-With this we can create a [`Cluster`](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1) which is able to represent the EKS cluster we just created. 
-
-Then we create a ArgoCD App [`Project`](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/projects.argocd.crossplane.io/Project/v1alpha1) which references the Cluster, and which itself can be referenced again by an ArgoCD Application managing our Spring Boot application we finally want to deploy.
-
-That the project README says https://github.com/crossplane-contrib/provider-argocd about it's purpose:
+Thats what the project README says https://github.com/crossplane-contrib/provider-argocd about it's purpose:
 
 > Custom Resource Definitions (CRDs) that model Argo CD resources
 
+With this we can create a [`Cluster`](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1) which is able to represent the EKS cluster we just created. This Cluster itself can be referenced again by an ArgoCD Application managing for example our Spring Boot application we finally want to deploy.
 
 
 #### Install Crossplane ArgoCD Provider

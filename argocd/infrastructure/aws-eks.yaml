@@ -14,7 +14,7 @@ spec:
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: app-deployment
-    path: upbound/provider-aws/infrastructure/eks
+    path: infrastructure/eks
   destination:
     namespace: default
     server: https://kubernetes.default.svc
