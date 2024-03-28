@@ -7,5 +7,6 @@ resources:
 ## changes to config maps
 patches:
 - path: argocd-cm-patch.yml
+- path: argocd-rbac-cm-patch.yml
 
 namespace: argocd

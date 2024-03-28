@@ -1592,6 +1592,11 @@ With this we can create a [`Cluster`](https://marketplace.upbound.io/providers/c
 
 Then we create a ArgoCD App [`Project`](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/projects.argocd.crossplane.io/Project/v1alpha1) which references the Cluster, and which itself can be referenced again by an ArgoCD Application managing our Spring Boot application we finally want to deploy.
 
+That the project README says https://github.com/crossplane-contrib/provider-argocd about it's purpose:
+
+> Custom Resource Definitions (CRDs) that model Argo CD resources
+
+
 
 #### Install Crossplane ArgoCD Provider
 
@@ -1658,7 +1663,175 @@ Argo should now list our new Provider:
 ![](docs/crossplane-contrib-argocd-provider-installed-by-argo.png)
 
 
+
+#### Create ArgoCD user & RBAC role for Crossplane ArgoCD Provider
+
+As stated in the docs https://github.com/crossplane-contrib/provider-argocd?tab=readme-ov-file#create-a-new-argo-cd-user we need to create an API token for the `ProviderConfig` of the Crossplane ArgoCD provider to use. To create the API token, we first need to create a new ArgoCD user.
+
+Therefore we enhance [the ConfigMap `argocd-cm`](argocd/install/argocd-cm-patch.yml) again:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+data:
+  ...
+  # add an additional local user with apiKey capabilities for provider-argocd
+  # see https://github.com/crossplane-contrib/provider-argocd?tab=readme-ov-file#getting-started-and-documentation
+  accounts.provider-argocd: apiKey      
+```
+
+As [the ArgoCD docs about user management](https://argo-cd.readthedocs.io/en/stable/operator-manual/user-management/#local-usersaccounts) state this is not enough:
+
+> "each of those users will need additional RBAC rules set up, otherwise they will fall back to the default policy specified by policy.default field of the `argocd-rbac-cm` ConfigMap."
+
+So we need to create another Kustomization patch for [the `argocd-rbac-cm` ConfigMap](argocd/install/argocd-rbac-cm-patch.yml):
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+data:
+  # For the provider-argocd user we need to add an additional rbac-rule
+  # see https://github.com/crossplane-contrib/provider-argocd?tab=readme-ov-file#create-a-new-argo-cd-user
+  policy.csv: "g, provider-argocd, role:admin"      
+```
+
+Don't forget to add this patch into the []`kustomization.yaml`](argocd/install/kustomization.yaml)!
+
+
+#### Create API Token for Crossplane ArgoCD Provider
+
+First we need to access the `argocd-server` Service somehow. In the simplest manner we create a port forward:
+
+```shell
+kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443
+```
+
+We also need to have the ArgoCD password ready:
+
+```shell
+ARGOCD_ADMIN_SECRET=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo)
+```
+
+Now we create a temporary JWT token for the `provider-argocd` user we just created (we need to have [`jq`](https://jqlang.github.io/jq/) installed for this command to work):
+
+```shell
+# be sure to have jq installed via 'brew install jq' or 'pamac install jq' etc.
+
+ARGOCD_ADMIN_TOKEN=$(curl -s -X POST -k -H "Content-Type: application/json" --data '{"username":"admin","password":"'$ARGOCD_ADMIN_SECRET'"}' https://localhost:8443/api/v1/session | jq -r .token)
+```
+
+Now we finally create an API token without expiration that can be used by `provider-argocd`:
+
+```shell
+ARGOCD_API_TOKEN=$(curl -s -X POST -k -H "Authorization: Bearer $ARGOCD_ADMIN_TOKEN" -H "Content-Type: application/json" https://localhost:8443/api/v1/account/provider-argocd/token | jq -r .token)
+```
+
+__TODO: Add to GitHub Actions workflows!__
+
+
+
+#### Create Secret containing the ARGOCD_API_TOKEN & configure Crossplane ArgoCD Provider
+
+https://github.com/crossplane-contrib/provider-argocd?tab=readme-ov-file#setup-crossplane-provider-argocd
+
+The `ARGOCD_API_TOKEN` can be used to create a Kubernetes Secret for the Crossplane ArgoCD Provider:
+
+```shell
+kubectl create secret generic argocd-credentials -n crossplane-system --from-literal=authToken="$ARGOCD_API_TOKEN"
+```
+
+Now finally we're able to tell our Crossplane ArgoCD Provider where it should obtain the ArgoCD API Token from. Let's create a ProviderConfig at [`crossplane-contrib/provider-argocd/config/provider-config-argocd.yaml`](crossplane-contrib/provider-argocd/config/provider-config-argocd.yaml):
+
+
+```yaml
+apiVersion: argocd.crossplane.io/v1alpha1
+kind: ProviderConfig
+metadata:
+  name: argocd-provider
+spec:
+  credentials:
+    secretRef:
+      key: authToken
+      name: argocd-credentials
+      namespace: crossplane-system
+    source: Secret
+  insecure: true
+  plainText: false
+  serverAddr: argocd-server.argocd.svc:443
+```
+
+We should also create [a ArgoCD Application for the ProviderConfig](argocd/crossplane-eso-bootstrap/crossplane-provider-argocd-config.yaml):
+
+```yaml
+# The ArgoCD Application for the Crossplane ArgoCD providers ProviderConfig
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-provider-argocd-config
+  namespace: argocd
+  labels:
+    crossplane.jonashackt.io: crossplane
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: app-deployment
+    path: crossplane-contrib/provider-argocd/config
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+
+
+
 #### Create a Cluster 
+
+```yaml
+apiVersion: cluster.argocd.crossplane.io/v1alpha1
+kind: Cluster
+metadata:
+  name: argo-reference-deploy-target-eks
+  labels:
+    purpose: dev
+spec:
+  forProvider:
+    config:
+      kubeconfigSecretRef:
+        key: kubeconfig
+        name: eks-cluster-kubeconfig
+        namespace: default
+  # providerConfigRef:
+  #   name: argocd-provider
+```
+
+
+As the docs state https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1
+
+`kubeconfigSecretRef' is described at what we need: 
+
+> KubeconfigSecretRef contains a reference to a Kubernetes secret entry that contains a raw kubeconfig in YAML or JSON. 
+
+The Secret containing the exact EKS kubeconfig is named `eks-cluster-kubeconfig` by our EKS Configuration and resides in the `default` namespace.
+
 
 
 #### Create a Application 

@@ -1,27 +1,25 @@
-# The ArgoCD Application for all Crossplane AWS providers
+# The ArgoCD Application for the Crossplane ArgoCD providers ProviderConfig
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-provider-aws
+  name: crossplane-provider-argocd-config
   namespace: argocd
   labels:
     crossplane.jonashackt.io: crossplane
   finalizers:
     - resources-finalizer.argocd.argoproj.io
   annotations:
-    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-wave: "5"
 spec:
   project: default
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: app-deployment
-    path: upbound/provider-aws/provider
+    path: crossplane-contrib/provider-argocd/config
   destination:
     namespace: default
     server: https://kubernetes.default.svc
-  # Using syncPolicy.automated here, otherwise the deployement of our Crossplane provider will fail with
-  # 'Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3'
   syncPolicy:
     automated:
       prune: true    
