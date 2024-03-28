@@ -1740,7 +1740,7 @@ You can double check in the ArgoCD UI at `Settings/Accounts` if the Token got cr
 ![](docs/provider-argocd-api-token-created.png)
 
 
-I also added all these steps to our GitHub Actions workflow. There's only one difference: running the `kubectl port-forward` command with a attached ` &` to have that port forward run in the background (see https://stackoverflow.com/a/72983554/4964553):
+I also added all these steps to our GitHub Actions workflow. There's only one difference: running the `kubectl port-forward` command with a attached ` &` to have that port forward run in the background (see https://stackoverflow.com/a/72983554/4964553). Also in case of the External Secrets Operator (ESO) setup, we need to create the namespace `crossplane-system` to be able to create the Secret there - because the namespace would normally be created by the ESO bootstrap process:
 
 ```yaml
       - name: Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider
@@ -1757,10 +1757,14 @@ I also added all these steps to our GitHub Actions workflow. There's only one di
           echo "--- Create ArgoCD API Token"
           ARGOCD_API_TOKEN=$(curl -s -X POST -k -H "Authorization: Bearer $ARGOCD_ADMIN_TOKEN" -H "Content-Type: application/json" https://localhost:8443/api/v1/account/provider-argocd/token | jq -r .token)
 
+          echo "--- Already create a namespace for crossplane for the Secret"
+          kubectl create namespace crossplane-system
+
           echo "--- Create Secret containing the ARGOCD_API_TOKEN for Crossplane ArgoCD Provider"
           kubectl create secret generic argocd-credentials -n crossplane-system --from-literal=authToken="$ARGOCD_API_TOKEN"
 ```
 
+For testing it locally, also see https://www.baeldung.com/linux/foreground-background-process on how to work with background subshells and move around with them. E.g. use the command `fg %1` (where 1 is the subshell id) to get back to the subshell after a Crtl-C.
 
 
 #### Create Secret containing the ARGOCD_API_TOKEN & configure Crossplane ArgoCD Provider
