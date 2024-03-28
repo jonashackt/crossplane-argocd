@@ -1,5 +1,3 @@
-# The ArgoCD Application for all Crossplane AWS providers incl. it's ProviderConfig
----
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -17,9 +15,7 @@ spec:
     path: deployment
   destination:
     namespace: default
-    server: https://736F91649BD7B7A70846AD9F8363EDA8.yl4.eu-central-1.eks.amazonaws.com
-  # Using syncPolicy.automated here, otherwise the deployement of our Crossplane provider will fail with
-  # 'Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3'
+    name: deploy-target-eks
   syncPolicy:
     automated:
       prune: true    

@@ -1537,6 +1537,9 @@ kubectl apply -f argocd/infrastructure/aws-eks.yaml
 
 ### Add the new EKS cluster as a new ArgoCD deploy target
 
+__TODO:__ Add Remarkable Sketch (as is or as slide (TDB))
+
+
 https://dev.to/thenjdevopsguy/registering-a-new-cluster-with-argocd-12mn
 
 https://www.padok.fr/en/blog/argocd-eks
@@ -1599,6 +1602,8 @@ That the project README says https://github.com/crossplane-contrib/provider-argo
 
 
 #### Install Crossplane ArgoCD Provider
+
+> The whole process might become more straightforward in the future: https://github.com/crossplane-contrib/provider-argocd/issues/14#issuecomment-1879101376
 
 So let's install the Crossplane ArgoCD provider, which is a community contribution project. Thus we create the `crossplane-contrib` folder containing a `provider-argocd` folder, where the new Provider should reside as `provider-argocd.yaml` in the `provider` dir:
 
@@ -1819,15 +1824,17 @@ metadata:
     purpose: dev
 spec:
   forProvider:
-    name: deploy-target-eks # name of the Cluster registered in ArgoCD
     config:
       kubeconfigSecretRef:
         key: kubeconfig
         name: eks-cluster-kubeconfig # Secret containing our kubeconfig to access the Crossplane created EKS cluster
         namespace: default
+    name: deploy-target-eks # name of the Cluster registered in ArgoCD
   providerConfigRef:
     name: argocd-provider
 ```
+
+> **Be sure** to provide the `forProvider.name` **AFTER** the `forProvider.config`, otherwise the name of the Cluster *will we overwritten by the EKS server address from the kubeconfig*!
 
 The `providerConfigRef.name.argocd-provider` references our `ProviderConfig`, which gives the Crossplane ArgoCD Provider the rights (via our API Token) to change the ArgoCD Server configuration (and thus add a new Cluster).
 
@@ -1858,13 +1865,11 @@ And also in the ArgoCD UI you should find the newly registerd Cluster now at `Se
 ![](docs/cluster-in-argocd-referencing-crossplane-created-eks-cluster.png)
 
 
-#### Create a Application 
-
-
-
 
 
 ### Deploy a app to the newly added target cluster
+
+Now we finally finally have the cluster dynamically referencable via the Crossplane ArgoCD Provider created Cluster object with the name `deploy-target-eks`! Let's try to use that in an Application deployment.
 
 In order to deploy our example app https://github.com/jonashackt/microservice-api-spring-boot
 
@@ -1873,13 +1878,13 @@ we need the corresponding Kubernetes deployment manifests, provided by https://g
 Having both in place, we can craft a matching ArgoCD Application:
 
 ```yaml
-# The ArgoCD Application for all Crossplane AWS providers incl. it's ProviderConfig
----
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: microservice-api-spring-boot
   namespace: argocd
+  labels:
+    crossplane.jonashackt.io: application
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -1890,9 +1895,7 @@ spec:
     path: deployment
   destination:
     namespace: default
-    server: https://736F91649BD7B7A70846AD9F8363EDA8.yl4.eu-central-1.eks.amazonaws.com
-  # Using syncPolicy.automated here, otherwise the deployement of our Crossplane provider will fail with
-  # 'Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3'
+    server: deploy-target-eks
   syncPolicy:
     automated:
       prune: true    
@@ -1904,7 +1907,7 @@ spec:
         maxDuration: 1m
 ```
 
-TODO: server shouldn't be hardcoded - or at least should be injected somehow
+As you can see we use our Cluster name `deploy-target-eks` as `spec.destination.server`.
 
 Now let's finally deploy our app via:
 
@@ -1912,21 +1915,62 @@ Now let's finally deploy our app via:
 kubectl apply -f argocd/applications/microservice-api-spring-boot.yaml
 ```
 
+
+But we get the following error in Argo: 
+
+```shell
+cluster 'deploy-target-eks' has not been configured
+```
+
+Looking [into the docs](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#applications) we get the point we're missing:
+
+> `destination` reference to the target cluster and namespace. For the cluster one of server or name can be used, [...] Under the hood when the server is missing, it is calculated based on the name and used for any operations.
+
+Thus we need to use `spec.destination.name` instead of `spec.destination.server`. This will then look into Argo's Cluster list and should find our `deploy-target-eks`.
+
+Now the working manifest looks like this:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: microservice-api-spring-boot
+  namespace: argocd
+  labels:
+    crossplane.jonashackt.io: application
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/microservice-api-spring-boot-config
+    targetRevision: HEAD
+    path: deployment
+  destination:
+    namespace: default
+    name: deploy-target-eks
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+```shell
+kubectl apply -f argocd/applications/microservice-api-spring-boot.yaml
+```
+
+
 If everything went fine, our App should be deployed by ArgoCD:
 
 ![](docs/first-successful-application-deployment-to-target-eks-cluster.png)
 
 
-
-
-
-
-### Add new Compositions to Argo
-
-
-
-
-
+Finally a full cycle is possible - from full bootstrap of ArgoCD & Crossplane Managed cluster to target EKS cluster creation in AWS via Crossplane to configuring that one in Argo and finally deploying an App dynamically referencing this Cluster! 
 
 
 
