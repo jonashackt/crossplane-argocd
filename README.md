@@ -1564,7 +1564,7 @@ kubectl apply -f argocd/infrastructure/aws-eks.yaml
 
 ### Add the new EKS cluster as a new ArgoCD deploy target
 
-__TODO:__ Add Remarkable Sketch (as is or as slide (TDB))
+![](docs/add-crossplane-created-cluster-to-argocd.png)
 
 
 https://dev.to/thenjdevopsguy/registering-a-new-cluster-with-argocd-12mn
