@@ -1860,7 +1860,7 @@ spec:
 
 #### Create a Cluster in ArgoCD referencing our Crossplane created EKS cluster
 
-Now we're where we wanted to be: We can finally create a Cluster in ArgoCD referencing the Crossplane created EKS cluster. Therefore we make use of the [Crossplane ArgoCD Providers Cluster CRD](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1) in our [`infrastructure/eks/argoconfig/cluster.yaml`](infrastructure/eks/argoconfig/cluster.yaml):
+Now we're where we wanted to be: We can finally create a Cluster in ArgoCD referencing the Crossplane created EKS cluster. Therefore we make use of the [Crossplane ArgoCD Providers Cluster CRD](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1) in our [`infrastructure/eks/cluster.yaml`](infrastructure/eks/cluster.yaml):
 
 ```yaml
 apiVersion: cluster.argocd.crossplane.io/v1alpha1
@@ -1896,7 +1896,7 @@ The Secret containing the exact EKS kubeconfig is named `eks-cluster-kubeconfig`
 Let's create the Cluster manually for now:
 
 ```shell
-kubectl apply -f infrastructure/eks/argoconfig/cluster.yaml
+kubectl apply -f infrastructure/eks/cluster.yaml
 ```
 
 If everything went correctly, a `kubectl get cluster` should state READY and SYNCED as `True`:
@@ -1912,45 +1912,13 @@ And also in the ArgoCD UI you should find the newly registerd Cluster now at `Se
 ![](docs/cluster-in-argocd-referencing-crossplane-created-eks-cluster.png)
 
 
-To also have the ArgoCD Cluster configuration available as Argo Application, I created one in argocd/infrastructure/aws-eks-argoconfig.yaml:
+To also have the ArgoCD Cluster configuration available as Argo Application, it's enough to have the `cluster.yaml` be placed together with the `deploy-target-eks.yaml` in `infrastructure/eks` directory. The Argo Application argocd/infrastructure/aws-eks.yaml will pick it up:
 
-```yaml
-# The ArgoCD Application for a Cluster in ArgoCD referencing our Crossplane created EKS cluster
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: aws-eks-argoconfig
-  namespace: argocd
-  labels:
-    crossplane.jonashackt.io: infrastructure
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: app-deployment
-    path: infrastructure/eks/argoconfig
-  destination:
-    namespace: default
-    server: https://kubernetes.default.svc
-  syncPolicy:
-    automated:
-      prune: true    
-    retry:
-      limit: 5
-      backoff:
-        duration: 5s 
-        factor: 2 
-        maxDuration: 1m
-```
+![](docs/crossplane-argocd-provider-cluster-part-of-eks-argo-application.png)
 
-Apply it via:
+It won't be available until the EKS cluster is fully deployed, thus producing some `CannotCreateExternalResource` events:
 
-```shell
-kubectl apply -f argocd/infrastructure/aws-eks-argoconfig.yaml
-```
+![](docs/argocd-provider-cluster-cannotcreateexternalresource-events.png)
 
 
 ### Deploy a app to the newly added target cluster
