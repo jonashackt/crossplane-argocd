@@ -1860,7 +1860,7 @@ spec:
 
 #### Create a Cluster in ArgoCD referencing our Crossplane created EKS cluster
 
-Now we're where we wanted to be: We can finally create a Cluster in ArgoCD referencing the Crossplane created EKS cluster. Therefore we make use of the [Crossplane ArgoCD Providers Cluster CRD](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1):
+Now we're where we wanted to be: We can finally create a Cluster in ArgoCD referencing the Crossplane created EKS cluster. Therefore we make use of the [Crossplane ArgoCD Providers Cluster CRD](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1) in our [`infrastructure/eks/argoconfig/cluster.yaml`](infrastructure/eks/argoconfig/cluster.yaml):
 
 ```yaml
 apiVersion: cluster.argocd.crossplane.io/v1alpha1
@@ -1896,7 +1896,7 @@ The Secret containing the exact EKS kubeconfig is named `eks-cluster-kubeconfig`
 Let's create the Cluster manually for now:
 
 ```shell
-kubectl apply -f resources/eks/cluster.yaml
+kubectl apply -f infrastructure/eks/argoconfig/cluster.yaml
 ```
 
 If everything went correctly, a `kubectl get cluster` should state READY and SYNCED as `True`:
@@ -1912,6 +1912,45 @@ And also in the ArgoCD UI you should find the newly registerd Cluster now at `Se
 ![](docs/cluster-in-argocd-referencing-crossplane-created-eks-cluster.png)
 
 
+To also have the ArgoCD Cluster configuration available as Argo Application, I created one in argocd/infrastructure/aws-eks-argoconfig.yaml:
+
+```yaml
+# The ArgoCD Application for a Cluster in ArgoCD referencing our Crossplane created EKS cluster
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-eks-argoconfig
+  namespace: argocd
+  labels:
+    crossplane.jonashackt.io: infrastructure
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: app-deployment
+    path: infrastructure/eks/argoconfig
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+Apply it via:
+
+```shell
+kubectl apply -f argocd/infrastructure/aws-eks-argoconfig.yaml
+```
 
 
 ### Deploy a app to the newly added target cluster
@@ -2018,6 +2057,8 @@ If everything went fine, our App should be deployed by ArgoCD:
 
 
 Finally a full cycle is possible - from full bootstrap of ArgoCD & Crossplane Managed cluster to target EKS cluster creation in AWS via Crossplane to configuring that one in Argo and finally deploying an App dynamically referencing this Cluster! 
+
+
 
 
 
