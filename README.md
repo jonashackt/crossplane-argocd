@@ -43,11 +43,15 @@ Now the `kubectl crossplane --help` command should be ready to use.
 Now spin up a local kind cluster
 
 ```shell
-kind create cluster --image kindest/node:v1.29.0 --wait 5m
+kind create cluster --image kindest/node:v1.29.2 --wait 5m
 ```
 
 
-### Configure annotation based resource tracking in ArgoCD
+### Configure ArgoCD for Crossplane
+
+https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/
+
+#### Configure annotation based resource tracking in ArgoCD
 
 https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/
 
@@ -64,15 +68,43 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-cm
-  labels:
-    app.kubernetes.io/name: argocd-cm
-    app.kubernetes.io/part-of: argocd
 data:
   application.resourceTrackingMethod: annotation
 ```
 
-But how do we install ArgoCD and change the ConfigMap in a flexible, GitOps-style and renovatebot-enabled way?
 
+### Exclude Crossplane generated ProviderConfigUsage CRDs
+
+https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/#set-resource-exclusion
+
+> Crossplane providers generates a `ProviderConfigUsage` for each of the managed resource (MR) it handles. This resource enable representing the relationship between MR and a ProviderConfig so that the controller can use it as finalizer when a ProviderConfig is deleted. End-users of Crossplane are not expected to interact with this resource.
+
+What this means is that if we have a lot of Crossplane Resources that we work with like in the following image, the ArgoCD UI reactivity can be impacted:
+
+![](docs/crossplane-providerconfigusage-in-argo.png)
+
+And because these resources don't give us anymore insights, we can savely remove them from ArgoCD UI. Therefore we also configure this in the `argocd-cm` ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+data:
+  ...
+  # Set Resource Exclusion (see https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/#set-resource-exclusion)
+  resource.exclusions: |
+    - apiGroups:
+      - "*"
+      kinds:
+      - ProviderConfigUsage      
+```
+
+
+
+
+
+But how do we install ArgoCD and change the ConfigMap in a flexible, GitOps-style and renovatebot-enabled way?
 
 
 ### Install ArgoCD into kind
@@ -305,7 +337,7 @@ Our crossplane AWS provider reside in [upbound/provider-aws-s3/config/provider-a
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-aws-s3
+  name: upbound-provider-aws-s3
 spec:
   package: xpkg.upbound.io/upbound/provider-aws-s3:v0.46.0
   packagePullPolicy: Always
@@ -319,14 +351,14 @@ How do we let ArgoCD manage and deploy this to our cluster? The simple way of [d
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: provider-aws-s3
+  name: crossplane-provider-aws-s3
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    path: upbound/provider-aws-s3/config
+    path: upbound/provider-aws/config
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
   destination:
@@ -371,7 +403,7 @@ The Kubernetes API could not find aws.upbound.io/ProviderConfig for requested re
 
 ### Install crossplane's AWS provider ProviderConfig with ArgoCD
 
-To get our Provider finally working we also need to create a `ProviderConfig` accordingly that will tell the Provider where to find it's AWS credentials. Therefore we create a [upbound/provider-aws-s3/config/provider-aws-config.yaml](upbound/provider-aws-s3/config/provider-aws-config.yaml):
+To get our Provider finally working we also need to create a `ProviderConfig` accordingly that will tell the Provider where to find it's AWS credentials. Therefore we create a [upbound/provider-aws/config/provider-aws-config.yaml](upbound/provider-aws/config/provider-aws-config.yaml):
 
 ```yaml
 apiVersion: aws.upbound.io/v1beta1
@@ -392,7 +424,7 @@ spec:
 The `secretRef.name` and `secretRef.key` has to match the fields of the already created Secret.
 
 
-To let ArgoCD manage and deploy our `ProviderConfig` we again create a new ArgoCD `Application` CRD at [argocd/crossplane-bootstrap/crossplane-provider-aws-config.yaml](argocd/crossplane-bootstrap/crossplane-provider-aws-config.yaml) [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/), which tells Argo to look in the directory path `upbound/provider-aws-s3/config`:
+To let ArgoCD manage and deploy our `ProviderConfig` we again create a new ArgoCD `Application` CRD at [argocd/crossplane-bootstrap/crossplane-provider-aws-config.yaml](argocd/crossplane-bootstrap/crossplane-provider-aws-config.yaml) [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/), which tells Argo to look in the directory path `upbound/provider-aws/config`:
 
 
 ```yaml
@@ -406,7 +438,7 @@ metadata:
 spec:
   project: default
   source:
-    path: upbound/provider-aws-s3/config
+    path: upbound/provider-aws/config
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
   destination:
@@ -645,7 +677,7 @@ Also make sure to have your `Default region` configured as a `env:` variable.
 
 ## Finally provisioning Cloud resources with Crossplane and Argo
 
-Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`upbound/provider-aws/resources/bucket.yaml`](upbound/provider-aws/resources/bucket.yaml) features a super simply example:
+Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`infrastructure/bucket.yaml`](infrastructure/bucket.yaml) features a super simply example:
 
 ```yaml
 apiVersion: s3.aws.upbound.io/v1beta1
@@ -660,10 +692,10 @@ spec:
 ```
 
 
-Since we're using Argo, we should deploy our Bucket as Argo Application too. I created a new folder `argocd/crossplane-resources`
+Since we're using Argo, we should deploy our Bucket as Argo Application too. I created a new folder `argocd/infrastructure`
 here, since the Crossplane provisioned infrastructure may not automatically be part of the bootstrap App of Apps.
 
-So here's our Argo Application for all the Crossplane resources that may come: [`argocd/crossplane-resources/crossplane-managed-resources.yaml`](argocd/crossplane-resources/crossplane-managed-resources.yaml):
+So here's our Argo Application for all the Crossplane managed infrastructure that may come: [`argocd/infrastructure/aws-s3.yaml`](argocd/infrastructure/aws-s3.yaml):
 
 ```yaml
 # The ArgoCD Application for all Crossplane Managed Resources
@@ -671,7 +703,7 @@ So here's our Argo Application for all the Crossplane resources that may come: [
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-managed-resources
+  name: crossplane-s3
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -680,7 +712,7 @@ spec:
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     targetRevision: HEAD
-    path: upbound/provider-aws/resources
+    path: infrastructure
   destination:
     namespace: default
     server: https://kubernetes.default.svc
@@ -698,7 +730,7 @@ spec:
 Apply it with:
 
 ```shell
-kubectl apply -f argocd/crossplane-resources/crossplane-managed-resources.yaml
+kubectl apply -f argocd/infrastructure/aws-s3.yaml
 ```
 
 If everything went fine, the Argo app should look `Healthy` like this:
@@ -1069,10 +1101,10 @@ Here are all components together we deployed so far using Argo:
 
 ![](docs/bootstrap-finalized-argo-crossplane-eso.png)
 
-Deploying our [`argocd/crossplane-resources/crossplane-managed-resources.yaml`](argocd/crossplane-resources/crossplane-managed-resources.yaml) should also work as expected:
+Deploying our [`argocd/infrastructure/aws-s3.yaml`](argocd/infrastructure/aws-s3.yaml) should also work as expected:
 
 ```shell
-kubectl apply -f argocd/crossplane-resources/crossplane-managed-resources.yaml
+kubectl apply -f argocd/infrastructure/aws-s3.yaml
 ```
 
 If everything went fine, the Argo app should look `Healthy` like this:
@@ -1149,6 +1181,850 @@ jobs:
 Be sure to create `DOPPLER_SERVICE_TOKEN` as GitHub Repository Secrets.
 
 
+
+
+
+# App Deployment
+
+Let's create a publicly accessible S3 bucket in our infrastructure/bucket.yaml:
+
+```yaml
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: crossplane-argocd-s3-bucket
+spec:
+  forProvider:
+    region: eu-central-1
+  providerConfigRef:
+    name: default
+---
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: BucketPublicAccessBlock
+metadata:
+  name: crossplane-argocd-s3-bucket-pab
+spec:
+  forProvider:
+    blockPublicAcls: false
+    blockPublicPolicy: false
+    ignorePublicAcls: false
+    restrictPublicBuckets: false
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
+    region: eu-central-1
+---
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: BucketOwnershipControls
+metadata:
+  name: crossplane-argocd-s3-bucket-osc
+spec:
+  forProvider:
+    rule:
+      - objectOwnership: ObjectWriter
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
+    region: eu-central-1
+---
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: BucketACL
+metadata:
+  name: crossplane-argocd-s3-bucket-acl
+spec:
+  forProvider:
+    acl: "public-read"
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
+    region: eu-central-1
+---
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: BucketWebsiteConfiguration
+metadata:
+  name: crossplane-argocd-s3-bucket-websiteconf
+spec:
+  forProvider:
+    indexDocument:
+      - suffix: index.html
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
+    region: eu-central-1
+```
+
+
+Also let's sync the Nuxt.js project https://github.com/jonashackt/microservice-ui-nuxt-js via the used `aws s3 sync`:
+
+```shell
+aws s3 sync .output/public/ s3://crossplane-argocd-s3-bucket --acl public-read
+```
+
+And we should be able to access our via http://crossplane-argocd-s3-bucket.s3-website.eu-central-1.amazonaws.com
+
+
+## Deploy a static website with ArgoCD?
+
+Application sources are generally Kubernetes manifests in Argo https://argo-cd.readthedocs.io/en/stable/user-guide/application_sources/
+
+So how do we actually deploy our static website to S3?
+
+https://www.reddit.com/r/kubernetes/comments/17qsi5b/is_there_a_kubernetes_way_of_deploying_static_web/
+
+According to https://github.com/argoproj/argo-cd/discussions/5052 there's the way to use custom Config Management Plugins https://argo-cd.readthedocs.io/en/stable/operator-manual/config-management-plugins/
+
+
+Proposal for Parameterized Configuration Management Plugins in Argo: https://argo-cd.readthedocs.io/en/latest/proposals/parameterized-config-management-plugins/
+
+
+But maybe we should simply deploy our static website to K8s as well? https://gimlet.io/blog/hosting-static-sites-on-kubernetes
+
+https://thenewstack.io/gitops-as-an-evolution-of-kubernetes/
+
+
+
+## Deploy an EKS Cluster
+
+### Multiple AWS Providers as ArgoCD Application
+
+To be able to deploy a [nested Composition like this for EKS](https://github.com/jonashackt/crossplane-eks-cluster) we need to install multiple Crossplane Providers: `provider-aws-ec2`, `provider-aws-eks`, `provider-aws-iam` additionally to our already installed `provider-aws-s3`. Therefore we should enhance our concept on how to install a Provider with ArgoCD!
+
+Since every Upbound provider family has one ProviderConfig to access the credentials, but multiple providers, it would make sense to enhance the Argo Application `argocd/crossplane-bootstrap/crossplane-provider-aws.yaml` to support multiple providers:
+
+```yaml
+# The ArgoCD Application for all Crossplane AWS providers incl. it's ProviderConfig
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-provider-aws
+  namespace: argocd
+  labels:
+    crossplane.jonashackt.io: crossplane
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: HEAD
+    path: upbound/provider-aws/provider
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  # Using syncPolicy.automated here, otherwise the deployement of our Crossplane provider will fail with
+  # 'Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3'
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+Thus this Application simply references the folder `upbound/provider-aws/provider`, where all the `Provider` manifests can be stored:
+
+```shell
+└── provider-aws
+    ...
+    ├── config
+    │   └── provider-config-aws.yaml
+    ...
+    └── provider
+        ├── provider-aws-ec2.yaml
+        ├── provider-aws-eks.yaml
+        ├── provider-aws-iam.yaml
+        └── provider-aws-s3.yaml
+```
+
+Now in Argo, the Application shows all available Crossplane providers:
+
+![](docs/multiple-crossplane-provider.png)
+
+
+#### Provider Upgrade problems: 'Only one reference can have Controller set to true'
+
+If new Provider versions get released, you can watch Argo trying to deploy the old version vs. Crossplane deploying the new one, which leads to a `degraded` status of the Providers:
+
+![](docs/degraded-aws-providers.png)
+
+The problem is this error: `Only one reference can have Controller set to true. Found "true" in references for Provider/provider-aws-ec2 and Provider/provider-aws-ec2`:
+
+```shell
+cannot apply package revision: cannot create object: ProviderRevision.pkg.crossplane.io "provider-aws-ec2-150095bdd614" is invalid: metadata.ownerReferences: Invalid value: []v1.OwnerReference{v1.OwnerReference{APIVersion:"pkg.crossplane.io/v1", Kind:"Provider", Name:"provider-aws-ec2", UID:"30bda236-6c12-412c-a647-b96368eff8b6", Controller:(*bool)(0xc02afeb38c), BlockOwnerDeletion:(*bool)(0xc02afeb38d)}, v1.OwnerReference{APIVersion:"pkg.crossplane.io/v1", Kind:"Provider", Name:"provider-aws-ec2", UID:"ee890f53-7590-4957-8f81-e92b931c4e8d", Controller:(*bool)(0xc02afeb38e), BlockOwnerDeletion:(*bool)(0xc02afeb38f)}}: Only one reference can have Controller set to true. Found "true" in references for Provider/provider-aws-ec2 and Provider/provider-aws-ec2
+```
+
+Therefore we should change some options regarding the Provider upgrades in our Provider configurations:
+
+```yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: upbound-provider-aws-ec2
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.1.1
+  packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
+  revisionActivationPolicy: Automatic # Otherwise our Provider never gets activate & healthy
+  revisionHistoryLimit: 1
+```
+
+As we're doing GitOpsified Crossplane with ArgoCD, we should configure the `packagePullPolicy` to `IfNotPresent` instead of `Always` (which means " Check for new packages every minute and download any matching package that isn’t in the cache", see https://docs.crossplane.io/master/concepts/packages/#configuration-package-pull-policy) - BUT leave the `revisionActivationPolicy` to `Automatic`! Since otherwise, the Provider will never get active and healty! See https://docs.crossplane.io/master/concepts/packages/#revision-activation-policy), but I didn't find it documented that way!
+
+
+#### GitOpsified Provider Upgrade
+
+See also https://stackoverflow.com/a/78230499/4964553
+
+Now with `packagePullPolicy: IfNotPresent` & `revisionActivationPolicy: Automatic` to do a Provider version upgrade, we simply need to upgrade the `spec.package` version number:
+
+```yaml
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.2.1 # --> Upgraded to 1.2.1
+  packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
+  revisionActivationPolicy: Automatic # Otherwise our Provider never gets activate & healthy
+  revisionHistoryLimit: 1
+```
+
+We need to commit the change as always, but also be a bit patient here with Argo and Crossplane to initiate and do the update for us. Look at a `kubectl get providerrevisions`. Even after the update commited and registered by Argo, Crossplane will take it's time. First it looks like this:
+
+```shell
+k get providerrevisions
+NAME                                       HEALTHY   REVISION   IMAGE                                                STATE      DEP-FOUND   DEP-INSTALLED   AGE
+provider-aws-ec2-3d66ea2d7903              True      1          xpkg.upbound.io/upbound/provider-aws-ec2:v1.2.1      Active     1           1               5m31s
+provider-aws-eks-5021e69b327c              True      2          xpkg.upbound.io/upbound/provider-aws-eks:v1.2.1      Inactive   1           1               4m11s
+provider-aws-eks-fbb6768e46c0              True      3          xpkg.upbound.io/upbound/provider-aws-eks:v1.1.1      Active     1           1               30m
+provider-aws-iam-9565c6312cd0              True      1          xpkg.upbound.io/upbound/provider-aws-iam:v1.1.1      Active     1           1               30m
+provider-aws-s3-6ca829a5198b               True      1          xpkg.upbound.io/upbound/provider-aws-s3:v1.1.1       Active     1           1               30m
+upbound-provider-family-aws-7cc64a779806   True      1          xpkg.upbound.io/upbound/provider-family-aws:v1.2.1   Active                                 30m
+```
+
+Now after a while and some events (look at them in `k9s` for example):
+
+![](docs/upgrade-provider-k9s-events.png)
+
+Some time later the new Provider version should be the `Active` one:
+
+```shell
+k get providerrevisions
+NAME                                       HEALTHY   REVISION   IMAGE                                                STATE      DEP-FOUND   DEP-INSTALLED   AGE
+provider-aws-ec2-3d66ea2d7903              True      1          xpkg.upbound.io/upbound/provider-aws-ec2:v1.2.1      Active     1           1               6m52s
+provider-aws-eks-5021e69b327c              True      4          xpkg.upbound.io/upbound/provider-aws-eks:v1.2.1      Active     1           1               5m32s
+provider-aws-eks-fbb6768e46c0              True      3          xpkg.upbound.io/upbound/provider-aws-eks:v1.1.1      Inactive   1           1               31m
+provider-aws-iam-9565c6312cd0              True      1          xpkg.upbound.io/upbound/provider-aws-iam:v1.1.1      Active     1           1               31m
+provider-aws-s3-6ca829a5198b               True      1          xpkg.upbound.io/upbound/provider-aws-s3:v1.1.1       Active     1           1               31m
+upbound-provider-family-aws-7cc64a779806   True      1          xpkg.upbound.io/upbound/provider-family-aws:v1.2.1   Active                                 31m
+```
+
+And luckily without any errors like mentioned above!
+
+
+
+### Using the EKS Nested Composition as Configuration Package
+
+I offloaded all the EKS Nested Composition as a separate repository, which publishes a Crossplane Configuration Package as OCI image: https://github.com/jonashackt/crossplane-eks-cluster
+
+We should be able to use it via the following Configuration:
+
+```yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Configuration
+metadata:
+  name: crossplane-eks-cluster
+spec:
+  package: ghcr.io/jonashackt/crossplane-eks-cluster:v0.0.2
+```
+
+Let's try to apply it to our cluster and use it:
+
+```shell
+kubectl apply -f upbound/provider-aws/apis/crossplane-eks-cluster.yaml
+```
+
+
+
+### Use EKS Cluster Configuration in Argo Application
+
+We should make our newly created EKS Configuration package viewable in Argo!
+
+Therefore let's create a new folder `argocd/crossplane-apis` and a new `Application` [`argocd/crossplane-apis/crossplane-apis.yaml`](argocd/crossplane-apis/crossplane-apis.yaml):
+
+```yaml
+# The ArgoCD Application for all Crossplane Managed Resources
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-apis
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: app-deployment
+    path: upbound/provider-aws/apis
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+Now we can apply this `crossplane-apis` Application to our ArgoCD:
+
+```shell
+kubectl apply -f argocd/crossplane-apis/crossplane-apis.yaml
+```
+
+That's pretty cool: Now we see all of our installed APIs as Argo Apps:
+
+![](docs/eks-apis-as-argo-app.png)
+
+
+
+### Craft a Composite Resource Claim (XRC) to provision an EKS cluster
+
+Now we use our installed APIs to create a Claim in [`infrastructure/eks/deploy-target-eks.yaml`](infrastructure/eks/deploy-target-eks.yaml):
+
+```yaml
+# Use the spec.group/spec.versions[0].name defined in the XRD
+apiVersion: k8s.crossplane.jonashackt.io/v1alpha1
+# Use the spec.claimName or spec.name specified in the XRD
+kind: KubernetesCluster
+metadata:
+  namespace: default
+  name: deploy-target-eks
+spec:
+  id: deploy-target-eks
+  parameters:
+    region: eu-central-1
+    nodes:
+      count: 3
+  # Crossplane creates the secret object in the same namespace as the Claim
+  # see https://docs.crossplane.io/latest/concepts/claims/#claim-connection-secrets
+  writeConnectionSecretToRef:
+    name: eks-cluster-kubeconfig
+```
+
+Don't apply it directly, we'll create a Argo App in a second.
+
+
+### Crossplane Composite Resource Claims (XRCs) as Argo Application
+
+We should also create a Argo App for our EKS cluster Composite Resource Claim to see our infrastructure beeing deployed visually :)
+
+Therefore we create the Application [`argocd/infrastructure/aws-eks.yaml`](argocd/infrastructure/aws-eks.yaml):
+
+```yaml
+# The ArgoCD Application for all Crossplane Managed Resources
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-eks
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: app-deployment
+    path: infrastructure/eks
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+Now **this** will deploy our EKS cluster using ArgoCD and our EKS Configuration Package based Nested EKS Composition https://github.com/jonashackt/crossplane-eks-cluster:
+
+```shell
+kubectl apply -f argocd/infrastructure/aws-eks.yaml
+```
+
+
+
+### Add the new EKS cluster as a new ArgoCD deploy target
+
+![](docs/add-crossplane-created-cluster-to-argocd.png)
+
+
+https://dev.to/thenjdevopsguy/registering-a-new-cluster-with-argocd-12mn
+
+https://www.padok.fr/en/blog/argocd-eks
+
+https://itnext.io/argocd-setup-external-clusters-by-name-d3d58a53acb0
+
+
+Before using `argocd` CLI, be sure to have logged the CLI into the current argocd-server instance. Therefore have a port forward ready
+
+```shell
+$ kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8080:80
+
+$ argocd login localhost:8080 --username admin --password $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo) --insecure
+'admin:login' logged in successfully
+Context 'localhost:8080' updated
+```
+
+https://argo-cd.readthedocs.io/en/stable/user-guide/commands/argocd_cluster_add/
+
+```shell
+argocd cluster add deploy-target-eks
+```
+
+This will add a few resources to the Target cluster like `ServiceAccount`, `ClusterRole` and `ClusterRoleBinding`:
+
+```shell
+$ argocd cluster add deploy-target-eks
+WARNING: This will create a service account `argocd-manager` on the cluster referenced by context `deploy-target-eks` with full cluster level privileges. Do you want to continue [y/N]? y
+INFO[0002] ServiceAccount "argocd-manager" already exists in namespace "kube-system" 
+INFO[0002] ClusterRole "argocd-manager-role" updated    
+INFO[0002] ClusterRoleBinding "argocd-manager-role-binding" updated 
+Cluster 'https://736F91649BD7B7A70846AD9F8363EDA8.yl4.eu-central-1.eks.amazonaws.com' added
+```
+
+The new cluster becomes visible in the Argo web ui also:
+
+![](docs/argocd-added-new-deploy-target-cluster.png)
+
+
+
+### Add new EKS clusters declaratively to ArgoCD
+
+Is there only the `argocd cluster add` command or could we achieve that using a manifest?
+
+https://github.com/argoproj/argo-cd/issues/8107
+
+Maybe the Crossplane ArgoCD Provider has the crucial Manifest for us? See https://github.com/crossplane-contrib/provider-argocd/issues/18 and https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1
+
+
+You might already wondered, what the Crossplane ArgoCD provider is about: https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd
+
+Thats what the project README says https://github.com/crossplane-contrib/provider-argocd about it's purpose:
+
+> Custom Resource Definitions (CRDs) that model Argo CD resources
+
+With this we can create a [`Cluster`](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1) which is able to represent the EKS cluster we just created. This Cluster itself can be referenced again by an ArgoCD Application managing for example our Spring Boot application we finally want to deploy.
+
+
+#### Install Crossplane ArgoCD Provider
+
+> The whole process might become more straightforward in the future: https://github.com/crossplane-contrib/provider-argocd/issues/14#issuecomment-1879101376
+
+So let's install the Crossplane ArgoCD provider, which is a community contribution project. Thus we create the `crossplane-contrib` folder containing a `provider-argocd` folder, where the new Provider should reside as `provider-argocd.yaml` in the `provider` dir:
+
+```yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-argocd
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/provider-argocd:v0.6.0
+  packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
+  revisionActivationPolicy: Automatic # Otherwise our Provider never gets activate & healthy
+  revisionHistoryLimit: 1
+```
+
+As we want to manage the Provider also using Argo, we need to create a new Argo Application:
+
+```yaml
+# The ArgoCD Application for all Crossplane Community contribution Providers needed in the setup
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-provider-contrib
+  namespace: argocd
+  labels:
+    crossplane.jonashackt.io: crossplane
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: app-deployment
+    path: crossplane-contrib
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  # Using syncPolicy.automated here, otherwise the deployement of our Crossplane provider will fail with
+  # 'Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3'
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+Apply it via the ususal bootstrap setup:
+
+```shell
+kubectl apply -f argocd/crossplane-eso-bootstrap.yaml
+```
+
+Argo should now list our new Provider:
+
+![](docs/crossplane-contrib-argocd-provider-installed-by-argo.png)
+
+
+
+#### Create ArgoCD user & RBAC role for Crossplane ArgoCD Provider
+
+As stated in the docs https://github.com/crossplane-contrib/provider-argocd?tab=readme-ov-file#create-a-new-argo-cd-user we need to create an API token for the `ProviderConfig` of the Crossplane ArgoCD provider to use. To create the API token, we first need to create a new ArgoCD user.
+
+Therefore we enhance [the ConfigMap `argocd-cm`](argocd/install/argocd-cm-patch.yml) again:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+data:
+  ...
+  # add an additional local user with apiKey capabilities for provider-argocd
+  # see https://github.com/crossplane-contrib/provider-argocd?tab=readme-ov-file#getting-started-and-documentation
+  accounts.provider-argocd: apiKey      
+```
+
+As [the ArgoCD docs about user management](https://argo-cd.readthedocs.io/en/stable/operator-manual/user-management/#local-usersaccounts) state this is not enough:
+
+> "each of those users will need additional RBAC rules set up, otherwise they will fall back to the default policy specified by policy.default field of the `argocd-rbac-cm` ConfigMap."
+
+So we need to create another Kustomization patch for [the `argocd-rbac-cm` ConfigMap](argocd/install/argocd-rbac-cm-patch.yml):
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+data:
+  # For the provider-argocd user we need to add an additional rbac-rule
+  # see https://github.com/crossplane-contrib/provider-argocd?tab=readme-ov-file#create-a-new-argo-cd-user
+  policy.csv: "g, provider-argocd, role:admin"      
+```
+
+Don't forget to add this patch into the []`kustomization.yaml`](argocd/install/kustomization.yaml)!
+
+
+#### Create API Token for Crossplane ArgoCD Provider
+
+First we need to access the `argocd-server` Service somehow. In the simplest manner we create a port forward:
+
+```shell
+kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443
+```
+
+We also need to have the ArgoCD password ready:
+
+```shell
+ARGOCD_ADMIN_SECRET=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo)
+```
+
+Now we create a temporary JWT token for the `provider-argocd` user we just created (we need to have [`jq`](https://jqlang.github.io/jq/) installed for this command to work):
+
+```shell
+# be sure to have jq installed via 'brew install jq' or 'pamac install jq' etc.
+
+ARGOCD_ADMIN_TOKEN=$(curl -s -X POST -k -H "Content-Type: application/json" --data '{"username":"admin","password":"'$ARGOCD_ADMIN_SECRET'"}' https://localhost:8443/api/v1/session | jq -r .token)
+```
+
+Now we finally create an API token without expiration that can be used by `provider-argocd`:
+
+```shell
+ARGOCD_API_TOKEN=$(curl -s -X POST -k -H "Authorization: Bearer $ARGOCD_ADMIN_TOKEN" -H "Content-Type: application/json" https://localhost:8443/api/v1/account/provider-argocd/token | jq -r .token)
+```
+
+You can double check in the ArgoCD UI at `Settings/Accounts` if the Token got created:
+
+![](docs/provider-argocd-api-token-created.png)
+
+
+I also added all these steps to our GitHub Actions workflow. There's only one difference: running the `kubectl port-forward` command with a attached ` &` to have that port forward run in the background (see https://stackoverflow.com/a/72983554/4964553). Also in case of the External Secrets Operator (ESO) setup, we need to create the namespace `crossplane-system` to be able to create the Secret there - because the namespace would normally be created by the ESO bootstrap process:
+
+```yaml
+      - name: Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider
+        run: |
+          echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553"
+          kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443 &
+          
+          echo "--- Extract ArgoCD password"
+          ARGOCD_ADMIN_SECRET=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo)
+
+          echo "--- Create temporary JWT token for the `provider-argocd` user"
+          ARGOCD_ADMIN_TOKEN=$(curl -s -X POST -k -H "Content-Type: application/json" --data '{"username":"admin","password":"'$ARGOCD_ADMIN_SECRET'"}' https://localhost:8443/api/v1/session | jq -r .token)
+          
+          echo "--- Create ArgoCD API Token"
+          ARGOCD_API_TOKEN=$(curl -s -X POST -k -H "Authorization: Bearer $ARGOCD_ADMIN_TOKEN" -H "Content-Type: application/json" https://localhost:8443/api/v1/account/provider-argocd/token | jq -r .token)
+
+          echo "--- Already create a namespace for crossplane for the Secret"
+          kubectl create namespace crossplane-system
+
+          echo "--- Create Secret containing the ARGOCD_API_TOKEN for Crossplane ArgoCD Provider"
+          kubectl create secret generic argocd-credentials -n crossplane-system --from-literal=authToken="$ARGOCD_API_TOKEN"
+```
+
+For testing it locally, also see https://www.baeldung.com/linux/foreground-background-process on how to work with background subshells and move around with them. E.g. use the command `fg %1` (where 1 is the subshell id) to get back to the subshell after a Crtl-C.
+
+
+#### Create Secret containing the ARGOCD_API_TOKEN & configure Crossplane ArgoCD Provider
+
+https://github.com/crossplane-contrib/provider-argocd?tab=readme-ov-file#setup-crossplane-provider-argocd
+
+The `ARGOCD_API_TOKEN` can be used to create a Kubernetes Secret for the Crossplane ArgoCD Provider:
+
+```shell
+kubectl create secret generic argocd-credentials -n crossplane-system --from-literal=authToken="$ARGOCD_API_TOKEN"
+```
+
+Now finally we're able to tell our Crossplane ArgoCD Provider where it should obtain the ArgoCD API Token from. Let's create a ProviderConfig at [`crossplane-contrib/provider-argocd/config/provider-config-argocd.yaml`](crossplane-contrib/provider-argocd/config/provider-config-argocd.yaml):
+
+
+```yaml
+apiVersion: argocd.crossplane.io/v1alpha1
+kind: ProviderConfig
+metadata:
+  name: argocd-provider
+spec:
+  credentials:
+    secretRef:
+      key: authToken
+      name: argocd-credentials
+      namespace: crossplane-system
+    source: Secret
+  insecure: true
+  plainText: false
+  serverAddr: argocd-server.argocd.svc:443
+```
+
+We should also create [a ArgoCD Application for the ProviderConfig](argocd/crossplane-eso-bootstrap/crossplane-provider-argocd-config.yaml):
+
+```yaml
+# The ArgoCD Application for the Crossplane ArgoCD providers ProviderConfig
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crossplane-provider-argocd-config
+  namespace: argocd
+  labels:
+    crossplane.jonashackt.io: crossplane
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    targetRevision: app-deployment
+    path: crossplane-contrib/provider-argocd/config
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+
+#### Create a Cluster in ArgoCD referencing our Crossplane created EKS cluster
+
+Now we're where we wanted to be: We can finally create a Cluster in ArgoCD referencing the Crossplane created EKS cluster. Therefore we make use of the [Crossplane ArgoCD Providers Cluster CRD](https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1) in our [`infrastructure/eks/cluster.yaml`](infrastructure/eks/cluster.yaml):
+
+```yaml
+apiVersion: cluster.argocd.crossplane.io/v1alpha1
+kind: Cluster
+metadata:
+  name: argo-reference-deploy-target-eks
+  labels:
+    purpose: dev
+spec:
+  forProvider:
+    config:
+      kubeconfigSecretRef:
+        key: kubeconfig
+        name: eks-cluster-kubeconfig # Secret containing our kubeconfig to access the Crossplane created EKS cluster
+        namespace: default
+    name: deploy-target-eks # name of the Cluster registered in ArgoCD
+  providerConfigRef:
+    name: argocd-provider
+```
+
+> **Be sure** to provide the `forProvider.name` **AFTER** the `forProvider.config`, otherwise the name of the Cluster *will we overwritten by the EKS server address from the kubeconfig*!
+
+The `providerConfigRef.name.argocd-provider` references our `ProviderConfig`, which gives the Crossplane ArgoCD Provider the rights (via our API Token) to change the ArgoCD Server configuration (and thus add a new Cluster).
+
+As the docs state https://marketplace.upbound.io/providers/crossplane-contrib/provider-argocd/v0.6.0/resources/cluster.argocd.crossplane.io/Cluster/v1alpha1
+
+`kubeconfigSecretRef' is described at what we need: 
+
+> KubeconfigSecretRef contains a reference to a Kubernetes secret entry that contains a raw kubeconfig in YAML or JSON. 
+
+The Secret containing the exact EKS kubeconfig is named `eks-cluster-kubeconfig` by our EKS Configuration and resides in the `default` namespace.
+
+Let's create the Cluster manually for now:
+
+```shell
+kubectl apply -f infrastructure/eks/cluster.yaml
+```
+
+If everything went correctly, a `kubectl get cluster` should state READY and SYNCED as `True`:
+
+```shell
+kubectl get cluster
+NAME                               READY   SYNCED   AGE
+argo-reference-deploy-target-eks   True    True     21s
+```
+
+And also in the ArgoCD UI you should find the newly registerd Cluster now at `Settings/Clusters`:
+
+![](docs/cluster-in-argocd-referencing-crossplane-created-eks-cluster.png)
+
+
+To also have the ArgoCD Cluster configuration available as Argo Application, it's enough to have the `cluster.yaml` be placed together with the `deploy-target-eks.yaml` in `infrastructure/eks` directory. The Argo Application argocd/infrastructure/aws-eks.yaml will pick it up:
+
+![](docs/crossplane-argocd-provider-cluster-part-of-eks-argo-application.png)
+
+It won't be available until the EKS cluster is fully deployed, thus producing some `CannotCreateExternalResource` events:
+
+![](docs/argocd-provider-cluster-cannotcreateexternalresource-events.png)
+
+
+### Deploy a app to the newly added target cluster
+
+Now we finally finally have the cluster dynamically referencable via the Crossplane ArgoCD Provider created Cluster object with the name `deploy-target-eks`! Let's try to use that in an Application deployment.
+
+In order to deploy our example app https://github.com/jonashackt/microservice-api-spring-boot
+
+we need the corresponding Kubernetes deployment manifests, provided by https://github.com/jonashackt/microservice-api-spring-boot-config
+
+Having both in place, we can craft a matching ArgoCD Application:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: microservice-api-spring-boot
+  namespace: argocd
+  labels:
+    crossplane.jonashackt.io: application
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/microservice-api-spring-boot-config
+    targetRevision: HEAD
+    path: deployment
+  destination:
+    namespace: default
+    server: deploy-target-eks
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+As you can see we use our Cluster name `deploy-target-eks` as `spec.destination.server`.
+
+Now let's finally deploy our app via:
+
+```shell
+kubectl apply -f argocd/applications/microservice-api-spring-boot.yaml
+```
+
+
+But we get the following error in Argo: 
+
+```shell
+cluster 'deploy-target-eks' has not been configured
+```
+
+Looking [into the docs](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#applications) we get the point we're missing:
+
+> `destination` reference to the target cluster and namespace. For the cluster one of server or name can be used, [...] Under the hood when the server is missing, it is calculated based on the name and used for any operations.
+
+Thus we need to use `spec.destination.name` instead of `spec.destination.server`. This will then look into Argo's Cluster list and should find our `deploy-target-eks`.
+
+Now the working manifest looks like this:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: microservice-api-spring-boot
+  namespace: argocd
+  labels:
+    crossplane.jonashackt.io: application
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/microservice-api-spring-boot-config
+    targetRevision: HEAD
+    path: deployment
+  destination:
+    namespace: default
+    name: deploy-target-eks
+  syncPolicy:
+    automated:
+      prune: true    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s 
+        factor: 2 
+        maxDuration: 1m
+```
+
+```shell
+kubectl apply -f argocd/applications/microservice-api-spring-boot.yaml
+```
+
+
+If everything went fine, our App should be deployed by ArgoCD:
+
+![](docs/first-successful-application-deployment-to-target-eks-cluster.png)
+
+
+Finally a full cycle is possible - from full bootstrap of ArgoCD & Crossplane Managed cluster to target EKS cluster creation in AWS via Crossplane to configuring that one in Argo and finally deploying an App dynamically referencing this Cluster! 
 
 
 

@@ -5,6 +5,8 @@ kind: Application
 metadata:
   name: crossplane-eso-bootstrap
   namespace: argocd
+  labels:
+    crossplane.jonashackt.io: bootstrap
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

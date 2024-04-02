@@ -1,0 +1,16 @@
+apiVersion: cluster.argocd.crossplane.io/v1alpha1
+kind: Cluster
+metadata:
+  name: argo-reference-deploy-target-eks
+  labels:
+    purpose: dev
+spec:
+  forProvider:
+    config:
+      kubeconfigSecretRef:
+        key: kubeconfig
+        name: eks-cluster-kubeconfig # Secret containing our kubeconfig to access the Crossplane created EKS cluster
+        namespace: default
+    name: deploy-target-eks # name of the Cluster registered in ArgoCD
+  providerConfigRef:
+    name: argocd-provider

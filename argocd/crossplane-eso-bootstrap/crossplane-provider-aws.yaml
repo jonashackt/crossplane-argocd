@@ -1,10 +1,12 @@
-# The ArgoCD Application for all Crossplane AWS providers incl. it's ProviderConfig
+# The ArgoCD Application for all Crossplane AWS providers
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: provider-aws
+  name: crossplane-provider-aws
   namespace: argocd
+  labels:
+    crossplane.jonashackt.io: crossplane
   finalizers:
     - resources-finalizer.argocd.argoproj.io
   annotations:

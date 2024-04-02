@@ -1,0 +1,58 @@
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: crossplane-argocd-s3-bucket
+spec:
+  forProvider:
+    region: eu-central-1
+  providerConfigRef:
+    name: default
+---
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: BucketPublicAccessBlock
+metadata:
+  name: crossplane-argocd-s3-bucket-pab
+spec:
+  forProvider:
+    blockPublicAcls: false
+    blockPublicPolicy: false
+    ignorePublicAcls: false
+    restrictPublicBuckets: false
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
+    region: eu-central-1
+---
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: BucketOwnershipControls
+metadata:
+  name: crossplane-argocd-s3-bucket-osc
+spec:
+  forProvider:
+    rule:
+      - objectOwnership: ObjectWriter
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
+    region: eu-central-1
+---
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: BucketACL
+metadata:
+  name: crossplane-argocd-s3-bucket-acl
+spec:
+  forProvider:
+    acl: "public-read"
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
+    region: eu-central-1
+---
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: BucketWebsiteConfiguration
+metadata:
+  name: crossplane-argocd-s3-bucket-websiteconf
+spec:
+  forProvider:
+    indexDocument:
+      - suffix: index.html
+    bucketRef: 
+      name: crossplane-argocd-s3-bucket
+    region: eu-central-1

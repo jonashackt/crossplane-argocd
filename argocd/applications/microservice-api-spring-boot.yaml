@@ -1,21 +1,21 @@
-# The ArgoCD Application for all Crossplane Managed Resources
----
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-managed-resources
+  name: microservice-api-spring-boot
   namespace: argocd
+  labels:
+    crossplane.jonashackt.io: application
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    repoURL: https://github.com/jonashackt/crossplane-argocd
+    repoURL: https://github.com/jonashackt/microservice-api-spring-boot-config
     targetRevision: HEAD
-    path: upbound/provider-aws/resources
+    path: deployment
   destination:
     namespace: default
-    server: https://kubernetes.default.svc
+    name: deploy-target-eks
   syncPolicy:
     automated:
       prune: true    
