@@ -11,6 +11,37 @@ Example project showing how to use the crossplane together with ArgoCD
 __The idea is "simple": Why not treat infrastructure deployments/provisioning the same way as application deployment?!__ An ideal combination would be crossplane as control plane framework, which manages infrastructure through the Kubernetes api together with ArgoCD as [GitOps](https://www.gitops.tech/) framework to have everything in sync with our version control system.
 
 
+### TLDR: Steps from 0 to 100
+
+If you don't want to read much text, do the following steps:
+
+```shell
+# fire up kind
+kind create cluster --image kindest/node:v1.29.2 --wait 5m
+
+# Install ArgoCD
+kubectl create namespace argocd
+kubectl apply -k argocd/install
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s
+
+# Create Secret with Doppler Service Token
+kubectl create secret generic doppler-token-auth-api --from-literal dopplerToken="$DOPPLER_SERVICE_TOKEN"
+
+# Bootstrap Crossplane via ArgoCD
+kubectl apply -n argocd -f argocd/crossplane-eso-bootstrap.yaml 
+
+# Install Crossplane EKS APIs/Composition
+kubectl apply -f upbound/provider-aws/apis/crossplane-eks-cluster.yaml
+
+# Create actual EKS cluster via Crossplane & register it in ArgoCD via argocd-provider
+kubectl apply -f argocd/infrastructure/aws-eks.yaml
+
+# Run Application on EKS cluster using Argo
+kubectl apply -f argocd/applications/microservice-api-spring-boot.yaml
+```
+
+
+
 ### Prerequisites: a management cluster for ArgoCD and crossplane
 
 First we need a simple management cluster for our ArgoCD and crossplane deployments. [As in the base project](https://github.com/jonashackt/crossplane-aws-azure) we simply use kind here:
@@ -45,6 +76,7 @@ Now spin up a local kind cluster
 ```shell
 kind create cluster --image kindest/node:v1.29.2 --wait 5m
 ```
+
 
 
 ### Configure ArgoCD for Crossplane
@@ -1690,6 +1722,15 @@ kubectl apply -f argocd/crossplane-eso-bootstrap.yaml
 Argo should now list our new Provider:
 
 ![](docs/crossplane-contrib-argocd-provider-installed-by-argo.png)
+
+
+**TODO** There seems to be one todo left: The argocd-provider does not seem to get deleted as it should:
+
+```shell
+cannot delete ProviderConfigUsage: providerconfigusages.argocd.crossplane.io "8c0e1f43-c876-4b86-abdc-ca58a62b0dc2" is forbidden: User "system:serviceaccount:crossplane-system:provider-argocd-2769734d45e2" cannot delete resource "providerconfigusages" in API group "argocd.crossplane.io" at the cluster scope
+```
+
+The API token may not have enough rights?
 
 
 
