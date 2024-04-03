@@ -1728,15 +1728,6 @@ Argo should now list our new Provider:
 ![](docs/crossplane-contrib-argocd-provider-installed-by-argo.png)
 
 
-**TODO** There seems to be one todo left: The argocd-provider does not seem to get deleted as it should:
-
-```shell
-cannot delete ProviderConfigUsage: providerconfigusages.argocd.crossplane.io "8c0e1f43-c876-4b86-abdc-ca58a62b0dc2" is forbidden: User "system:serviceaccount:crossplane-system:provider-argocd-2769734d45e2" cannot delete resource "providerconfigusages" in API group "argocd.crossplane.io" at the cluster scope
-```
-
-The API token may not have enough rights?
-
-
 
 #### Create ArgoCD user & RBAC role for Crossplane ArgoCD Provider
 
@@ -1861,7 +1852,20 @@ Our GitHub Actions workflow now also integrates the Secret creation:
           echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553"
           kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443 &
           
-          ./create-argocd-api-token-secret.sh
+          echo "--- Extract ArgoCD password"
+          ARGOCD_ADMIN_SECRET=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo)
+
+          echo "--- Create temporary JWT token for the `provider-argocd` user"
+          ARGOCD_ADMIN_TOKEN=$(curl -s -X POST -k -H "Content-Type: application/json" --data '{"username":"admin","password":"'$ARGOCD_ADMIN_SECRET'"}' https://localhost:8443/api/v1/session | jq -r .token)
+          
+          echo "--- Create ArgoCD API Token"
+          ARGOCD_API_TOKEN=$(curl -s -X POST -k -H "Authorization: Bearer $ARGOCD_ADMIN_TOKEN" -H "Content-Type: application/json" https://localhost:8443/api/v1/account/provider-argocd/token | jq -r .token)
+
+          echo "--- Already create a namespace for crossplane for the Secret"
+          kubectl create namespace crossplane-system
+
+          echo "--- Create Secret containing the ARGOCD_API_TOKEN for Crossplane ArgoCD Provider"
+          kubectl create secret generic argocd-credentials -n crossplane-system --from-literal=authToken="$ARGOCD_API_TOKEN"
 ```
 
 
