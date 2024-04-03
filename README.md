@@ -27,11 +27,15 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -
 # Create Secret with Doppler Service Token
 kubectl create secret generic doppler-token-auth-api --from-literal dopplerToken="$DOPPLER_SERVICE_TOKEN"
 
+# Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider (port forward can be run in subshell appending ' &' + Ctrl-C and beeing deleted after running create-argocd-api-token-secret.sh via 'fg 1%' + Ctrl-C)
+kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443
+./create-argocd-api-token-secret.sh
+
 # Bootstrap Crossplane via ArgoCD
 kubectl apply -n argocd -f argocd/crossplane-eso-bootstrap.yaml 
 
 # Install Crossplane EKS APIs/Composition
-kubectl apply -f upbound/provider-aws/apis/crossplane-eks-cluster.yaml
+kubectl apply -f argocd/crossplane-apis/crossplane-apis.yaml
 
 # Create actual EKS cluster via Crossplane & register it in ArgoCD via argocd-provider
 kubectl apply -f argocd/infrastructure/aws-eks.yaml
@@ -1675,7 +1679,7 @@ spec:
   revisionHistoryLimit: 1
 ```
 
-As we want to manage the Provider also using Argo, we need to create a new Argo Application:
+As we want to manage the Provider also using Argo, we need to create a new Argo Application. It get's the same `argocd.argoproj.io/sync-wave: "4"` as the other providers in our setup:
 
 ```yaml
 # The ArgoCD Application for all Crossplane Community contribution Providers needed in the setup
@@ -1690,7 +1694,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: "4"
 spec:
   project: default
   source:
@@ -1805,34 +1809,8 @@ You can double check in the ArgoCD UI at `Settings/Accounts` if the Token got cr
 ![](docs/provider-argocd-api-token-created.png)
 
 
-I also added all these steps to our GitHub Actions workflow. There's only one difference: running the `kubectl port-forward` command with a attached ` &` to have that port forward run in the background (see https://stackoverflow.com/a/72983554/4964553). Also in case of the External Secrets Operator (ESO) setup, we need to create the namespace `crossplane-system` to be able to create the Secret there - because the namespace would normally be created by the ESO bootstrap process:
 
-```yaml
-      - name: Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider
-        run: |
-          echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553"
-          kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443 &
-          
-          echo "--- Extract ArgoCD password"
-          ARGOCD_ADMIN_SECRET=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo)
-
-          echo "--- Create temporary JWT token for the `provider-argocd` user"
-          ARGOCD_ADMIN_TOKEN=$(curl -s -X POST -k -H "Content-Type: application/json" --data '{"username":"admin","password":"'$ARGOCD_ADMIN_SECRET'"}' https://localhost:8443/api/v1/session | jq -r .token)
-          
-          echo "--- Create ArgoCD API Token"
-          ARGOCD_API_TOKEN=$(curl -s -X POST -k -H "Authorization: Bearer $ARGOCD_ADMIN_TOKEN" -H "Content-Type: application/json" https://localhost:8443/api/v1/account/provider-argocd/token | jq -r .token)
-
-          echo "--- Already create a namespace for crossplane for the Secret"
-          kubectl create namespace crossplane-system
-
-          echo "--- Create Secret containing the ARGOCD_API_TOKEN for Crossplane ArgoCD Provider"
-          kubectl create secret generic argocd-credentials -n crossplane-system --from-literal=authToken="$ARGOCD_API_TOKEN"
-```
-
-For testing it locally, also see https://www.baeldung.com/linux/foreground-background-process on how to work with background subshells and move around with them. E.g. use the command `fg %1` (where 1 is the subshell id) to get back to the subshell after a Crtl-C.
-
-
-#### Create Secret containing the ARGOCD_API_TOKEN & configure Crossplane ArgoCD Provider
+#### Create Secret containing the ARGOCD_API_TOKEN
 
 https://github.com/crossplane-contrib/provider-argocd?tab=readme-ov-file#setup-crossplane-provider-argocd
 
@@ -1841,6 +1819,54 @@ The `ARGOCD_API_TOKEN` can be used to create a Kubernetes Secret for the Crosspl
 ```shell
 kubectl create secret generic argocd-credentials -n crossplane-system --from-literal=authToken="$ARGOCD_API_TOKEN"
 ```
+
+I also added all these steps to a script [`create-argocd-api-token-secret.sh`](create-argocd-api-token-secret.sh) so that we're able to run all the steps without much thinking:
+
+```shell
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "### This Script will prepare a K8s Secret with a ArgoCD API Token for Crossplane ArgoCD Provider (be sure to have a service/argocd-server 8443:443 running before)"
+
+echo "--- Extract ArgoCD password"
+ARGOCD_ADMIN_SECRET=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo)
+
+echo "--- Create temporary JWT token for the provider-argocd user"
+ARGOCD_ADMIN_TOKEN=$(curl -s -X POST -k -H "Content-Type: application/json" --data '{"username":"admin","password":"'$ARGOCD_ADMIN_SECRET'"}' https://localhost:8443/api/v1/session | jq -r .token)
+
+echo "--- Create ArgoCD API Token"
+ARGOCD_API_TOKEN=$(curl -s -X POST -k -H "Authorization: Bearer $ARGOCD_ADMIN_TOKEN" -H "Content-Type: application/json" https://localhost:8443/api/v1/account/provider-argocd/token | jq -r .token)
+
+echo "--- Already create a namespace for crossplane for the Secret (if not already exist, see https://stackoverflow.com/a/65411733/4964553)"
+kubectl create namespace crossplane-system --dry-run=client -o yaml | kubectl apply -f -
+
+echo "--- Create Secret containing the ARGOCD_API_TOKEN for Crossplane ArgoCD Provider"
+kubectl create secret generic argocd-credentials -n crossplane-system --from-literal=authToken="$ARGOCD_API_TOKEN"
+```
+
+Now all the steps to create the Secret for the Crossplane argocd-provider can be run via a simple:
+
+```shell
+kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443
+./create-argocd-api-token-secret.sh
+```
+
+> The `kubectl port-forward` command can be run in subshell appending ` &` + `Ctrl-C` and beeing deleted after running create-argocd-api-token-secret.sh via `fg 1%` (where 1 is the subshell id, obtain via `jobs` command) + `Ctrl-C` (see https://stackoverflow.com/a/72983554/4964553 & https://www.baeldung.com/linux/foreground-background-process).
+
+Our GitHub Actions workflow now also integrates the Secret creation:
+
+```yaml
+      - name: Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider
+        run: |
+          echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553"
+          kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443 &
+          
+          ./create-argocd-api-token-secret.sh
+```
+
+
+
+#### Configure Crossplane ArgoCD Provider
 
 Now finally we're able to tell our Crossplane ArgoCD Provider where it should obtain the ArgoCD API Token from. Let's create a ProviderConfig at [`crossplane-contrib/provider-argocd/config/provider-config-argocd.yaml`](crossplane-contrib/provider-argocd/config/provider-config-argocd.yaml):
 
