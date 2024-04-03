@@ -40,9 +40,17 @@ kubectl apply -f argocd/crossplane-apis/crossplane-apis.yaml
 # Create actual EKS cluster via Crossplane & register it in ArgoCD via argocd-provider
 kubectl apply -f argocd/infrastructure/aws-eks.yaml
 
+# Optional: If you want, have a look onto the new cluster
+kubectl get secret eks-cluster-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 --decode > ekskubeconfig
+# integrate the contents of `ekskubeconfig` into your `~/.kube/config` (better w/ VSCode!) & switch over to the new kube context
+
 # Run Application on EKS cluster using Argo
 kubectl apply -f argocd/applications/microservice-api-spring-boot.yaml
 ```
+
+Now you should see both clusters (kind & EKS) running and the app beeing deployed:
+
+![](docs/kind-argo-crossplane-and-eks-fully-working.png)
 
 
 
