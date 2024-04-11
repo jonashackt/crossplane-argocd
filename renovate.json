@@ -9,5 +9,8 @@
   },
   "kubernetes": {
     "fileMatch": ["\\.yaml$"]
+  },
+  "crossplane": {
+    "fileMatch": ["\\.yaml$"]
   }
 }
