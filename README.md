@@ -1,6 +1,12 @@
 # crossplane-argocd
 [![Crossplane plain ArgoCD](https://github.com/jonashackt/crossplane-argocd/workflows/crossplane-argocd/badge.svg)](https://github.com/jonashackt/crossplane-argocd/actions/workflows/crossplane-argocd.yml)
 [![Crossplane, ArgoCD & External Secrets Operator (+Doppler)](https://github.com/jonashackt/crossplane-argocd/workflows/crossplane-argocd-external-secrets/badge.svg)](https://github.com/jonashackt/crossplane-argocd/actions/workflows/crossplane-argocd-external-secrets.yml)
+![crossplane-version](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjonashackt%2Fcrossplane-argocd%2Fmain%2Fcrossplane%2FChart.yaml&query=%24.dependencies%5B%3A1%5D.version&label=crossplane&color=blue)
+![argocd-version](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjonashackt%2Fcrossplane-argocd%2Fmain%2Fargocd%2Finstall%2Fkustomization.yaml&query=%24.resources%5B%3A1%5D&label=argocd&color=rgb(236%2C%20110%2C%2076))
+![provider-aws-ec2](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjonashackt%2Fcrossplane-argocd%2Fmain%2Fupbound%2Fprovider-aws%2Fprovider%2Fupbound-provider-aws-ec2.yaml&query=%24.spec.package&label=provider-aws-ec2&color=rgb(109%2C%20100%2C%20245))
+![provider-aws-eks](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjonashackt%2Fcrossplane-argocd%2Fmain%2Fupbound%2Fprovider-aws%2Fprovider%2Fupbound-provider-aws-eks.yaml&query=%24.spec.package&label=provider-aws-eks&color=rgb(109%2C%20100%2C%20245))
+![provider-aws-iam](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjonashackt%2Fcrossplane-argocd%2Fmain%2Fupbound%2Fprovider-aws%2Fprovider%2Fupbound-provider-aws-iam.yaml&query=%24.spec.package&label=provider-aws-iam&color=rgb(109%2C%20100%2C%20245))
+![provider-aws-s3](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjonashackt%2Fcrossplane-argocd%2Fmain%2Fupbound%2Fprovider-aws%2Fprovider%2Fupbound-provider-aws-s3.yaml&query=%24.spec.package&label=provider-aws-s3&color=rgb(109%2C%20100%2C%20245))
 [![License](http://img.shields.io/:license-mit-blue.svg)](https://github.com/jonashackt/crossplane-argocd/blob/master/LICENSE)
 [![renovateenabled](https://img.shields.io/badge/renovate-enabled-yellow)](https://renovatebot.com)
 
