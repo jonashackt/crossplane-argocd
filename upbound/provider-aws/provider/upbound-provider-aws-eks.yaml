@@ -3,7 +3,7 @@ kind: Provider
 metadata:
   name: upbound-provider-aws-eks
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-eks:v1.3.1
+  package: xpkg.upbound.io/upbound/provider-aws-eks:v1.4.0
   packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
   revisionActivationPolicy: Automatic # Otherwise our Provider never gets activate & healthy
   revisionHistoryLimit: 1
