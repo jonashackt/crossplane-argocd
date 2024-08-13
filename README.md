@@ -23,19 +23,22 @@ If you don't want to read much text, do the following steps:
 
 ```shell
 # fire up kind
-kind create cluster --image kindest/node:v1.29.2 --wait 5m
+kind create cluster --image kindest/node:v1.30.2 --wait 5m
 
 # Install ArgoCD
-kubectl create namespace argocd
 kubectl apply -k argocd/install
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s
+
+# Access ArgoUI
+kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8080:80
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
 
 # Create Secret with Doppler Service Token
 kubectl create secret generic doppler-token-auth-api --from-literal dopplerToken="$DOPPLER_SERVICE_TOKEN"
 
 # Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider (port forward can be run in subshell appending ' &' + Ctrl-C and beeing deleted after running create-argocd-api-token-secret.sh via 'fg 1%' + Ctrl-C)
 kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443
-./create-argocd-api-token-secret.sh
+bash create-argocd-api-token-secret.sh
 
 # Bootstrap Crossplane via ArgoCD
 kubectl apply -n argocd -f argocd/crossplane-eso-bootstrap.yaml 
@@ -92,7 +95,7 @@ Now the `kubectl crossplane --help` command should be ready to use.
 Now spin up a local kind cluster
 
 ```shell
-kind create cluster --image kindest/node:v1.29.2 --wait 5m
+kind create cluster --image kindest/node:v1.30.2 --wait 5m
 ```
 
 
@@ -651,7 +654,7 @@ name: crossplane-argocd
 on: [push]
 
 env:
-  KIND_NODE_VERSION: v1.29.0
+  KIND_NODE_VERSION: v1.30.2
   # AWS
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -1177,7 +1180,7 @@ name: crossplane-argocd-external-secrets
 on: [push]
 
 env:
-  KIND_NODE_VERSION: v1.29.0
+  KIND_NODE_VERSION: v1.32.2
   # Doppler
   DOPPLER_SERVICE_TOKEN: ${{ secrets.DOPPLER_SERVICE_TOKEN }}
 

@@ -3,7 +3,7 @@ name: crossplane-argocd
 on: [push]
 
 env:
-  KIND_NODE_VERSION: v1.29.2
+  KIND_NODE_VERSION: v1.30.2
   # AWS
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -26,9 +26,6 @@ jobs:
 
       - name: Install ArgoCD into kind
         run: |
-          echo "--- Create argo namespace and install it"
-          kubectl create namespace argocd
-
           echo " Install & configure ArgoCD via Kustomize - see https://stackoverflow.com/a/71692892/4964553"
           kubectl apply -k argocd/install
           
