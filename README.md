@@ -1856,7 +1856,7 @@ Now all the steps to create the Secret for the Crossplane argocd-provider can be
 
 ```shell
 kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443
-./create-argocd-api-token-secret.sh
+bash create-argocd-api-token-secret.sh
 ```
 
 > The `kubectl port-forward` command can be run in subshell appending ` &` + `Ctrl-C` and beeing deleted after running create-argocd-api-token-secret.sh via `fg 1%` (where 1 is the subshell id, obtain via `jobs` command) + `Ctrl-C` (see https://stackoverflow.com/a/72983554/4964553 & https://www.baeldung.com/linux/foreground-background-process).
@@ -1869,22 +1869,22 @@ Our GitHub Actions workflow now also integrates the Secret creation:
           echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553"
           kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443 &
           
-          echo "--- Extract ArgoCD password"
-          ARGOCD_ADMIN_SECRET=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo)
+          echo "--- Wait shortly to let the port forward come available"
+          sleep 5
 
-          echo "--- Create temporary JWT token for the `provider-argocd` user"
-          ARGOCD_ADMIN_TOKEN=$(curl -s -X POST -k -H "Content-Type: application/json" --data '{"username":"admin","password":"'$ARGOCD_ADMIN_SECRET'"}' https://localhost:8443/api/v1/session | jq -r .token)
-          
-          echo "--- Create ArgoCD API Token"
-          ARGOCD_API_TOKEN=$(curl -s -X POST -k -H "Authorization: Bearer $ARGOCD_ADMIN_TOKEN" -H "Content-Type: application/json" https://localhost:8443/api/v1/account/provider-argocd/token | jq -r .token)
-
-          echo "--- Already create a namespace for crossplane for the Secret"
-          kubectl create namespace crossplane-system
-
-          echo "--- Create Secret containing the ARGOCD_API_TOKEN for Crossplane ArgoCD Provider"
-          kubectl create secret generic argocd-credentials -n crossplane-system --from-literal=authToken="$ARGOCD_API_TOKEN"
+          bash create-argocd-api-token-secret.sh
 ```
 
+As you can see we use a `sleep 5` timer here in order to let the `kubectl port-forward` to become ready. Otherwise will run into a `Error: Process completed with exit code 7.` like this::
+
+```shell
+--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553
+### This Script will prepare a K8s Secret with a ArgoCD API Token for Crossplane ArgoCD Provider (be sure to have a service/argocd-server 8443:443 running before)
+--- Extract ArgoCD password
+--- Create temporary JWT token for the provider-argocd user
+Forwarding from 0.0.0.0:8443 -> 8080
+Error: Process completed with exit code 7.
+```
 
 
 #### Configure Crossplane ArgoCD Provider
