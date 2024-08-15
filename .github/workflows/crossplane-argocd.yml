@@ -46,6 +46,9 @@ jobs:
           echo "--- Create AWS Provider secret"
           kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./aws-creds.conf
 
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+
       - name: Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider
         run: |
           echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553"
