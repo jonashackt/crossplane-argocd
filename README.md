@@ -14,7 +14,7 @@ Example project showing how to use the crossplane together with ArgoCD
 
 > This project is based on the crossplane only repository https://github.com/jonashackt/crossplane-aws-azure, where the basics about crossplane.io are explained in detail - incl. how to provision to AWS and Azure.
 
-__The idea is "simple": Why not treat infrastructure deployments/provisioning the same way as application deployment?!__ An ideal combination would be crossplane as control plane framework, which manages infrastructure through the Kubernetes api together with ArgoCD as [GitOps](https://www.gitops.tech/) framework to have everything in sync with our version control system.
+__The idea is "simple": Why not treat infrastructure deployments/provisioning the same way as application deployments?!__ An ideal combination would be crossplane as control plane framework, which manages infrastructure through the Kubernetes api together with ArgoCD as [GitOps](https://www.gitops.tech/) framework to have everything in sync with our version control system.
 
 
 ### TLDR: Steps from 0 to 100
@@ -23,7 +23,7 @@ If you don't want to read much text, do the following steps:
 
 ```shell
 # fire up kind
-kind create cluster --image kindest/node:v1.30.2 --wait 5m
+kind create cluster --image kindest/node:v1.30.4 --wait 5m
 
 # Install ArgoCD
 kubectl apply -k argocd/install
@@ -95,7 +95,7 @@ Now the `kubectl crossplane --help` command should be ready to use.
 Now spin up a local kind cluster
 
 ```shell
-kind create cluster --image kindest/node:v1.30.2 --wait 5m
+kind create cluster --image kindest/node:v1.30.4 --wait 5m
 ```
 
 
@@ -171,7 +171,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-- github.com/argoproj/argo-cd//manifests/cluster-install?ref=v2.9.3
+- github.com/argoproj/argo-cd//manifests/cluster-install?ref=v2.12.0
 
 ## changes to config maps
 patches:
@@ -202,10 +202,32 @@ kubectl create namespace argocd
 kubectl apply -k argocd/install
 ```
 
+We can enhance our [`kustomization.yaml`](argocd/install/kustomization.yaml) even further by adding a new [argocd-namespace.yml](argocd/install/argocd-namespace.yml), that will automatically create the namespace `argocd` for us:
 
-__TODO:__ Configure Argo configmaps to handle Crossplane correctly
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 
-https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/
+resources:
+- argocd-namespace.yml
+- github.com/argoproj/argo-cd//manifests/cluster-install?ref=v2.12.0
+
+## changes to config maps
+patches:
+- path: argocd-cm-patch.yml
+- path: argocd-rbac-cm-patch.yml
+
+namespace: argocd
+```
+
+No need to explicitely run `kubectl create namespace argocd` anymore:
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+```
 
 
 
@@ -378,13 +400,11 @@ Now we need to use the `aws-creds.conf` file to create the Crossplane AWS Provid
 kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./aws-creds.conf
 ```
 
-__TODO:__ create Secret as via manifest (in GitHub Actions)?!
-
 
 
 ### Install crossplane's AWS provider with ArgoCD
 
-Our crossplane AWS provider reside in [upbound/provider-aws-s3/config/provider-aws-s3.yaml](upbound/provider-aws-s3/config/provider-aws-s3.yaml):
+Our crossplane AWS provider for S3 resides in [upbound/provider-aws/provider/upbound-provider-aws-s3.yaml](upbound/provider-aws/provider/upbound-provider-aws-s3.yaml):
 
 ```yaml
 apiVersion: pkg.crossplane.io/v1
@@ -550,7 +570,13 @@ Sadly using Argo's [`SyncWaves` feature](https://argo-cd.readthedocs.io/en/stabl
 
 Now there are multiple patterns you can use to manage multiple ArgoCD application. You can for example go with [the App of Apps Pattern](https://argo-cd.readthedocs.io/en/stable/operator-manual/cluster-bootstrapping/#app-of-apps-pattern) or with [`ApplicationSets`](https://argo-cd.readthedocs.io/en/stable/operator-manual/applicationset/), which moved into the ArgoCD main project around version 2.6.
 
-You'd might say: ApplicationSets is the way to go today. But __App of Apps is not deprecated__ https://github.com/argoproj/argo-cd/discussions/11892#discussioncomment-6765089 The exact same GitHub issue shows our discussion. From it I would extract the following TLDR: If you want to bootstrap a cluster (e.g. installing tools like Crossplane), the App of Apps feature together with it's support for SyncWaves is pretty handsome. That might be the reason, the feature is described inside the `operator-manual/cluster-bootstrapping` part of the docs: https://argo-cd.readthedocs.io/en/stable/operator-manual/cluster-bootstrapping/#app-of-apps-pattern
+You'd might say: ApplicationSets is the way to go today. But __App of Apps is not deprecated__ https://github.com/argoproj/argo-cd/discussions/11892#discussioncomment-6765089 The exact same GitHub issue shows our discussion:
+
+> To be super clear: app-of-apps is not deprecated. The idea of deploying Applications (which are just Kubernetes resources) from another Application is fundamental to how Argo CD works. It would be difficult to remove even if we wanted to.
+
+> As for the hackiness: yes, it does have limitations, bugs, and idiosyncrasies. And ApplicationSets (or something else) may be better for some use cases. But all tools have limitations, bugs, and idiosyncrasies.
+
+From that I would extract the following TLDR: If you want to bootstrap a cluster (e.g. installing tools like Crossplane), the App of Apps feature together with it's support for SyncWaves is pretty handsome. That might be the reason, the feature is described inside the `operator-manual/cluster-bootstrapping` part of the docs: https://argo-cd.readthedocs.io/en/stable/operator-manual/cluster-bootstrapping/#app-of-apps-pattern
 
 If you want to get your teams enabled to deploy their apps in a GitOps fashion (incl. self-service) and want a great way to use multiple manifests in apps also from within monorepos (e.g. backend, frontend, db), then [the `ApplicationSet` feature](https://argo-cd.readthedocs.io/en/stable/operator-manual/applicationset/) is match for you. It also generates the `Application` manifests automatically leveraging it's many generators, like `Git Generator: Directories`, `Git Generator: Files` and so on. My colleague Daniel Häcker [wrote a great post about that topic](https://www.codecentric.de/wissens-hub/blog/gitops-argocd). 
 
@@ -572,7 +598,7 @@ I created my App of Apps definition in [argocd/crossplane-bootstrap.yaml](argocd
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane
+  name: crossplane-bootstrap
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -654,7 +680,7 @@ name: crossplane-argocd
 on: [push]
 
 env:
-  KIND_NODE_VERSION: v1.30.2
+  KIND_NODE_VERSION: v1.30.4
   # AWS
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -1180,7 +1206,7 @@ name: crossplane-argocd-external-secrets
 on: [push]
 
 env:
-  KIND_NODE_VERSION: v1.32.2
+  KIND_NODE_VERSION: v1.32.4
   # Doppler
   DOPPLER_SERVICE_TOKEN: ${{ secrets.DOPPLER_SERVICE_TOKEN }}
 
@@ -1496,9 +1522,9 @@ kubectl apply -f upbound/provider-aws/apis/crossplane-eks-cluster.yaml
 
 
 
-### Use EKS Cluster Configuration in Argo Application
+### GitOpsify API installation: Use EKS Cluster Configuration in Argo Application
 
-We should make our newly created EKS Configuration package viewable in Argo!
+We should create an Argo Application for our EKS Configuration package to make Argo manage it's versions for us (which also makes the EKS Configuration viewable in Argo UI)!
 
 Therefore let's create a new folder `argocd/crossplane-apis` and a new `Application` [`argocd/crossplane-apis/crossplane-apis.yaml`](argocd/crossplane-apis/crossplane-apis.yaml):
 
