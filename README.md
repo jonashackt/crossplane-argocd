@@ -63,7 +63,7 @@ Now you should see both clusters (kind & EKS) running and the app beeing deploye
 
 
 
-### Prerequisites: a management cluster for ArgoCD and crossplane
+# Prerequisites: a management cluster for ArgoCD and crossplane
 
 First we need a simple management cluster for our ArgoCD and crossplane deployments. [As in the base project](https://github.com/jonashackt/crossplane-aws-azure) we simply use kind here:
 
@@ -100,13 +100,20 @@ kind create cluster --image kindest/node:v1.30.4 --wait 5m
 
 
 
-### Configure ArgoCD for Crossplane
+# Pre-install preparations: Configure ArgoCD for Crossplane
 
-https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/
+Before even starting to install ArgoCD, we should be aware of [some needed configuration details](https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/) in order to let Argo run smootly with Crossplane.
+
+We can ignore [the mentioned health status configuration](https://docs.crossplane.io/latest/guides/crossplane-with-argo-cd/#set-health-status) in the docs, since 
+
+> "Some checks are supported by the community directly in Argo’s repository. For example the Provider from pkg.crossplane.io has already been declared which means there no further configuration needed."
+
+So for now we should focus on the configuration of the annotation based resource tracking in ArgoCD and the exclusion of Crossplane generated `ProviderConfigUsage` CRDs.
+
 
 #### Configure annotation based resource tracking in ArgoCD
 
-https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/
+As [the docs state](https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/):
 
 > "There are different ways to configure how Argo CD tracks resources. With Crossplane, you need to configure Argo CD to use Annotation based resource tracking."
 
@@ -122,21 +129,22 @@ kind: ConfigMap
 metadata:
   name: argocd-cm
 data:
+  # Set Resource Tracking Method (see https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/#set-resource-tracking-method)
   application.resourceTrackingMethod: annotation
 ```
 
 
 ### Exclude Crossplane generated ProviderConfigUsage CRDs
 
-https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/#set-resource-exclusion
+The second necessary configuration refers to [the exclusion of Crossplane generated `ProviderConfigUsage` CRDs](https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/#set-resource-exclusion):
 
 > Crossplane providers generates a `ProviderConfigUsage` for each of the managed resource (MR) it handles. This resource enable representing the relationship between MR and a ProviderConfig so that the controller can use it as finalizer when a ProviderConfig is deleted. End-users of Crossplane are not expected to interact with this resource.
 
-What this means is that if we have a lot of Crossplane Resources that we work with like in the following image, the ArgoCD UI reactivity can be impacted:
+What this means is that if we have a lot of Crossplane Resources that we work with like it is shown in the following image, the ArgoCD UI reactivity can be impacted:
 
 ![](docs/crossplane-providerconfigusage-in-argo.png)
 
-And because these resources don't give us anymore insights, we can savely remove them from ArgoCD UI. Therefore we also configure this in the `argocd-cm` ConfigMap:
+And because these resources don't give us anymore insights, we can savely remove them as ArgoCD resources. Therefore we also configure this in the `argocd-cm` ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -153,74 +161,58 @@ data:
       - ProviderConfigUsage      
 ```
 
+We will actually configure this while installing ArgoCD in a second. Because the question is: where exactly can we change parameters of the `argocd-cm` ConfigMap in ArgoCD?
 
 
 
 
-But how do we install ArgoCD and change the ConfigMap in a flexible, GitOps-style and renovatebot-enabled way?
 
+# Install ArgoCD into the management cluster
 
-### Install ArgoCD into kind
+This question boils down to another question on a higher level: How do we install ArgoCD and change the ConfigMap in a flexible and GitOps-style way? Ideally also in a [renovatebot-enabled](https://github.com/renovatebot/renovate) fashion. And I already had that kind of question solved for me: Just [use Kustomize as described here](https://stackoverflow.com/a/71692892/4964553) and [also in the Argo docs](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#manage-argo-cd-using-argo-cd).
 
-There's a great repo https://github.com/jonashackt/tekton-argocd-eks where also a great way on how to configure and install ArgoCD is described https://stackoverflow.com/a/71692892/4964553 (and [also in the Argo docs](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#manage-argo-cd-using-argo-cd)).
+In fact the ArgoCD team itself uses this approach to deploy their own ArgoCD instances. A live deployment [is available here](https://cd.apps.argoproj.io/) and the configuration used [can be found on GitHub](https://github.com/argoproj/argoproj-deployments/tree/master/argocd).
 
-First we create a directory `argocd/install` and a file [`kustomization.yaml`](argocd/install/kustomization.yaml):
+Using [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/) enables a great way of declaritively changing configuration in ConfigMaps, while using the default installation method (which [is this install.yaml](https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml)). And at the same time staying upgradable via Renovate. 
+
+So let's first create a directory `argocd/install` in the root of our repository. Therein we create a file called [`kustomization.yaml`](argocd/install/kustomization.yaml) with the following contents:
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-- github.com/argoproj/argo-cd//manifests/cluster-install?ref=v2.12.0
+- github.com/argoproj/argo-cd//manifests/cluster-install?ref=v2.12.2
+- argocd-namespace.yaml
 
 ## changes to config maps
 patches:
-- path: argocd-cm-patch.yml
+- path: argocd-cm-patch.yaml
 
 namespace: argocd
 ```
 
-We also need to create a file [`argocd-cm-patch.yml`](argocd/install/argocd-cm-patch.yml), where we can implement our needed annotation based resource tracking mode in the Argo ConfigMap:
+Under the `resources` parameter you can see a link to a ArgoCD installation manifest, followed by the ArgoCD version tag. This is a great way of enabling [Renovate](https://github.com/renovatebot/renovate) to keep our setup up-to-date automatically.
+
+As Kustomize has the ability to use patch files, we also create a file [`argocd-cm-patch.yaml`](argocd/install/argocd-cm-patch.yaml). Here we can configure the annotation based resource tracking mode and exclude the Crossplane generated ProviderConfigUsage CRDs from ArgoCD:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-cm
-  labels:
-    app.kubernetes.io/name: argocd-cm
-    app.kubernetes.io/part-of: argocd
 data:
-  server.insecure: "true"
+  # Set Resource Tracking Method (see https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/#set-resource-tracking-method)
   application.resourceTrackingMethod: annotation
+  # Set Resource Exclusion (see https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/#set-resource-exclusion)
+  resource.exclusions: |
+    - apiGroups:
+      - "*"
+      kinds:
+      - ProviderConfigUsage
 ```
 
-Creating the Argo namespace and installing it via `kubectl apply -k` is all we need to do:
-
-```shell
-kubectl create namespace argocd
-kubectl apply -k argocd/install
-```
-
-We can enhance our [`kustomization.yaml`](argocd/install/kustomization.yaml) even further by adding a new [argocd-namespace.yml](argocd/install/argocd-namespace.yml), that will automatically create the namespace `argocd` for us:
-
-```yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-- argocd-namespace.yml
-- github.com/argoproj/argo-cd//manifests/cluster-install?ref=v2.12.0
-
-## changes to config maps
-patches:
-- path: argocd-cm-patch.yml
-- path: argocd-rbac-cm-patch.yml
-
-namespace: argocd
-```
-
-No need to explicitely run `kubectl create namespace argocd` anymore:
+Additionally to our ConfigMap patch we create another file [argocd-namespace.yaml](argocd/install/argocd-namespace.yaml), that will automatically create the namespace `argocd` for us:
 
 ```yaml
 apiVersion: v1
@@ -229,25 +221,32 @@ metadata:
   name: argocd
 ```
 
+With this simple manifest and it's integration into our [`kustomization.yaml`](argocd/install/kustomization.yaml), we don't need to explicitely run `kubectl create namespace argocd` anymore.
+
+Now we have everything prepared to install ArgoCD via Kustomize. Simply run a `kubectl apply -k` aimed to our previously created directory:
+
+```shell
+kubectl apply -k argocd/install
+```
 
 
 
 
 ### Accessing ArgoCD GUI
 
-First we need to obtain the initial password for the `admin` user via:
+Since we're using ArgoCD, we should also be able to access it's fantastic UI in our browser. Therefore we first need to obtain the initial password for the `admin` user on the command line:
 
 ```shell
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
 ```
 
-Now we have multiple options here - where the simplest might be a `port-forward`:
+In order to make the `argocd-server` available outside of our management cluster we have multiple options. One of the simplest might be a `port-forward`:
 
 ```shell
 kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8080:80
 ```
 
-Now access the ArgoCD UI inside your Browser at http://localhost:8080 using `admin` user and the obtained password.
+Now we can access the ArgoCD UI inside your Browser at http://localhost:8080 using `admin` user and the obtained password.
 
 
 
@@ -262,7 +261,6 @@ argocd login localhost:8080 --username admin --password $(kubectl -n argocd get 
 ```
 
 Remember to change the initial password in production environments!
-
 
 
 
@@ -1776,7 +1774,7 @@ Argo should now list our new Provider:
 
 As stated in the docs https://github.com/crossplane-contrib/provider-argocd?tab=readme-ov-file#create-a-new-argo-cd-user we need to create an API token for the `ProviderConfig` of the Crossplane ArgoCD provider to use. To create the API token, we first need to create a new ArgoCD user.
 
-Therefore we enhance [the ConfigMap `argocd-cm`](argocd/install/argocd-cm-patch.yml) again:
+Therefore we enhance [the ConfigMap `argocd-cm`](argocd/install/argocd-cm-patch.yaml) again:
 
 ```yaml
 apiVersion: v1
@@ -1794,7 +1792,7 @@ As [the ArgoCD docs about user management](https://argo-cd.readthedocs.io/en/sta
 
 > "each of those users will need additional RBAC rules set up, otherwise they will fall back to the default policy specified by policy.default field of the `argocd-rbac-cm` ConfigMap."
 
-So we need to create another Kustomization patch for [the `argocd-rbac-cm` ConfigMap](argocd/install/argocd-rbac-cm-patch.yml):
+So we need to create another Kustomization patch for [the `argocd-rbac-cm` ConfigMap](argocd/install/argocd-rbac-cm-patch.yaml):
 
 ```yaml
 apiVersion: v1
