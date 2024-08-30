@@ -280,7 +280,7 @@ appVersion: 0.0.0 # unused
 dependencies:
   - name: crossplane
     repository: https://charts.crossplane.io/stable
-    version: 1.14.5
+    version: 1.16.0
 ```
 
 __This Helm chart needs to be picked up by Argo in a declarative GitOps way (not through the UI).__
@@ -410,13 +410,13 @@ kind: Provider
 metadata:
   name: upbound-provider-aws-s3
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-s3:v0.46.0
+  package: xpkg.upbound.io/upbound/provider-aws-s3:v1.12.0
   packagePullPolicy: Always
   revisionActivationPolicy: Automatic
   revisionHistoryLimit: 1
 ```
 
-How do we let ArgoCD manage and deploy this to our cluster? The simple way of [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/) is what we're looking for. Therefore we create a new ArgoCD `Application` CRD at [argocd/crossplane-bootstrap/crossplane-provider-aws.yaml](argocd/crossplane-bootstrap/crossplane-provider-aws.yaml), which tells Argo to look in the directory path `upbound/provider-aws-s3/config`:
+How do we let ArgoCD manage and deploy this to our cluster? The simple way of [defining a directory containing k8s manifests](https://argo-cd.readthedocs.io/en/stable/user-guide/directory/) is what we're looking for. Therefore we create a new ArgoCD `Application` CRD at [argocd/crossplane-bootstrap/crossplane-provider-aws.yaml](argocd/crossplane-bootstrap/crossplane-provider-aws.yaml), which tells Argo to look in the directory path `upbound/provider-aws/config`:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -442,10 +442,10 @@ spec:
       prune: true     
 ```
 
-The crucial point here is to use the `syncPolicy.automated` flag as described in the docs: https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/. Otherwise the deployment of the Crossplane `provider-aws-s3` will give the following error:
+The crucial point here is to use the `syncPolicy.automated` flag as described in the docs: https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/. Otherwise the deployment of the Crossplane `upbound-provider-aws-s3` will give the following error:
 
 ```shell
-Resource not found in cluster: pkg.crossplane.io/v1/Provider:provider-aws-s3
+Resource not found in cluster: pkg.crossplane.io/v1/Provider:upbound-provider-aws-s3
 ```
 
 The automated syncPolicy makes sure that child apps are automatically created, synced, and deleted when the manifest is changed.
@@ -542,7 +542,7 @@ We finally managed to let Argo deploy the Crossplane core components together wi
 
 ### Why our current setup is sub optimal
 
-While our setup works now and also fully implements the GitOps way, we have a lot of `Application` files, that need to be applied in a specific order. Furthermore the `Provider` and `ProviderConfig` manifests (which simply configure the AWS Crossplane Provider) need to reside in different directories - `upbound/provider-aws-s3/provider` and `upbound/provider-aws-s3/config`. 
+While our setup works now and also fully implements the GitOps way, we have a lot of `Application` files, that need to be applied in a specific order.
 
 > __Our goal should be a single manifest defining the whole Crossplane setup incl. core, Provider, ProviderConfig etc. in ArgoCD__
 
@@ -552,7 +552,7 @@ If we would use [an Application that points to a directory](https://argo-cd.read
 The Kubernetes API could not find aws.upbound.io/ProviderConfig for requested resource default/default. Make sure the "ProviderConfig" CRD is installed on the destination cluster.
 ```
 
-Since deployment order wouldn't be clear and the `Provider` manifests need to be fully deployed before the `ProviderConfig` - otherwise the deployment fails because of missing CRDs. 
+Since deployment order wouldn't be clear and the `Provider` manifests need to be fully deployed before the `ProviderConfig`. Otherwise the deployment fails because of missing CRDs. 
 
 __Wouldn't be Argo's SyncWaves feature a great match for that issue?__
 
@@ -691,7 +691,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@master
 
-      - name: Spin up kind via brew
+      - name: Spin up kind
         run: |          
           echo "--- Create kind cluster"
           kind create cluster --image "kindest/node:$KIND_NODE_VERSION" --wait 5m
@@ -754,7 +754,7 @@ Also make sure to have your `Default region` configured as a `env:` variable.
 
 ## Finally provisioning Cloud resources with Crossplane and Argo
 
-Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`infrastructure/bucket.yaml`](infrastructure/bucket.yaml) features a super simply example:
+Let's create a simple S3 Bucket in AWS. [The docs tell us](https://marketplace.upbound.io/providers/upbound/provider-aws-s3/v0.47.1/resources/s3.aws.upbound.io/Bucket/v1beta1), which config we need. [`infrastructure/s3/simple-bucket.yaml`](infrastructure/s3/simple-bucket.yaml) features a super simply example:
 
 ```yaml
 apiVersion: s3.aws.upbound.io/v1beta1
