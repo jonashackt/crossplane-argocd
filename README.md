@@ -780,7 +780,7 @@ So here's our Argo Application for all the Crossplane managed infrastructure tha
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-s3
+  name: aws-s3
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
