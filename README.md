@@ -34,6 +34,8 @@ kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8080:80
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
 
 # Create Secret with Doppler Service Token
+# be sure to have exported the env var locally, e.g. via
+# export DOPPLER_SERVICE_TOKEN="dp.st.dev.dopplerservicetoken"
 kubectl create secret generic doppler-token-auth-api --from-literal dopplerToken="$DOPPLER_SERVICE_TOKEN"
 
 # Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider (port forward can be run in subshell appending ' &' + Ctrl-C and beeing deleted after running create-argocd-api-token-secret.sh via 'fg 1%' + Ctrl-C)
@@ -42,6 +44,8 @@ bash create-argocd-api-token-secret.sh
 
 # Bootstrap Crossplane via ArgoCD
 kubectl apply -n argocd -f argocd/crossplane-eso-bootstrap.yaml 
+
+kubectl get crd
 
 # Install Crossplane EKS APIs/Composition
 kubectl apply -f argocd/crossplane-apis/crossplane-apis.yaml
