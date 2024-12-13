@@ -3,7 +3,7 @@ kind: Provider
 metadata:
   name: upbound-provider-aws-s3
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-s3:v1.17.0
+  package: xpkg.upbound.io/upbound/provider-aws-s3:v1.18.0
   packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
   revisionActivationPolicy: Automatic # Otherwise our Provider never gets activate & healthy
   revisionHistoryLimit: 1
