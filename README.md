@@ -23,7 +23,7 @@ If you don't want to read much text, do the following steps:
 
 ```shell
 # fire up kind
-kind create cluster --image kindest/node:v1.31.1 --wait 5m
+kind create cluster --image kindest/node:v1.32.0 --wait 5m --name crossplane-argocd
 
 # Install ArgoCD
 kubectl apply -k argocd/install
@@ -42,6 +42,9 @@ kubectl create secret generic doppler-token-auth-api --from-literal dopplerToken
 kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443
 bash create-argocd-api-token-secret.sh
 
+
+
+
 # Bootstrap Crossplane via ArgoCD
 kubectl apply -n argocd -f argocd/crossplane-eso-bootstrap.yaml 
 
@@ -52,6 +55,7 @@ kubectl apply -f argocd/crossplane-apis/crossplane-apis.yaml
 
 # Create actual EKS cluster via Crossplane & register it in ArgoCD via argocd-provider
 kubectl apply -f argocd/infrastructure/aws-eks.yaml
+crossplane beta trace kubernetesclusters.k8s.crossplane.jonashackt.io/deploy-target-eks -o wide
 
 # Optional: If you want, have a look onto the new cluster
 kubectl get secret eks-cluster-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 --decode > ekskubeconfig
