@@ -3,7 +3,7 @@ kind: Provider
 metadata:
   name: upbound-provider-aws-ec2
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.20.0
+  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.20.1
   packagePullPolicy: IfNotPresent # Only download the package if it isn’t in the cache.
   revisionActivationPolicy: Automatic # Otherwise our Provider never gets activate & healthy
   revisionHistoryLimit: 1
