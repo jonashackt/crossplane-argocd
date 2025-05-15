@@ -6,4 +6,4 @@ appVersion: 0.0.0 # unused
 dependencies:
   - name: external-secrets
     repository: https://charts.external-secrets.io
-    version: 0.15.1
+    version: 0.17.0
