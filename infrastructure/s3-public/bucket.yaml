@@ -1,14 +1,12 @@
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
   name: crossplane-argocd-s3-bucket
 spec:
   forProvider:
     region: eu-central-1
-  providerConfigRef:
-    name: default
 ---
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: BucketPublicAccessBlock
 metadata:
   name: crossplane-argocd-s3-bucket-pab
@@ -22,19 +20,19 @@ spec:
       name: crossplane-argocd-s3-bucket
     region: eu-central-1
 ---
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: BucketOwnershipControls
 metadata:
   name: crossplane-argocd-s3-bucket-osc
 spec:
   forProvider:
     rule:
-      - objectOwnership: ObjectWriter
+      objectOwnership: ObjectWriter
     bucketRef: 
       name: crossplane-argocd-s3-bucket
     region: eu-central-1
 ---
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: BucketACL
 metadata:
   name: crossplane-argocd-s3-bucket-acl
@@ -45,14 +43,14 @@ spec:
       name: crossplane-argocd-s3-bucket
     region: eu-central-1
 ---
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: BucketWebsiteConfiguration
 metadata:
   name: crossplane-argocd-s3-bucket-websiteconf
 spec:
   forProvider:
     indexDocument:
-      - suffix: index.html
+      suffix: index.html
     bucketRef: 
       name: crossplane-argocd-s3-bucket
     region: eu-central-1

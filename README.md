@@ -26,7 +26,7 @@ If you don't want to read much text, do the following steps:
 
 ```shell
 # fire up kind
-kind create cluster --image kindest/node:v1.33.2 --wait 5m --name crossplane-argocd
+kind create cluster --image kindest/node:v1.35.1 --wait 5m --name crossplane-argocd
 
 # Install ArgoCD
 kubectl apply -k argocd/install

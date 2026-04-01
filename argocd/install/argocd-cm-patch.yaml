@@ -4,7 +4,8 @@ metadata:
   name: argocd-cm
 data:
   # Set Resource Tracking Method (see https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/#set-resource-tracking-method)
-  application.resourceTrackingMethod: annotation
+  # From Argo 3.x annotation is already the default (https://argo-cd.readthedocs.io/en/stable/operator-manual/upgrading/2.14-3.0/#use-annotation-based-tracking-by-default)
+  # application.resourceTrackingMethod: annotation
   # Set Resource Exclusion (see https://docs.crossplane.io/knowledge-base/integrations/argo-cd-crossplane/#set-resource-exclusion)
   resource.exclusions: |
     - apiGroups:

@@ -1,9 +1,8 @@
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
+  namespace: default
   name: crossplane-argocd-simple-bucket
 spec:
   forProvider:
     region: eu-central-1
-  providerConfigRef:
-    name: default
