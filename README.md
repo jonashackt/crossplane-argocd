@@ -195,7 +195,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-- github.com/argoproj/argo-cd//manifests/cluster-install?ref=v2.12.2
+- github.com/argoproj/argo-cd//manifests/cluster-install?ref=v3.3.6
 - argocd-namespace.yaml
 
 ## changes to config maps
