@@ -27,7 +27,7 @@ jobs:
       - name: Install ArgoCD into kind
         run: |
           echo " Install & configure ArgoCD via Kustomize - see https://stackoverflow.com/a/71692892/4964553"
-          kubectl apply -k argocd/install
+          kubectl apply --server-side --force-conflicts -k argocd/install
           
           echo "--- Wait for Argo to become ready"
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s

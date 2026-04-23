@@ -29,7 +29,7 @@ If you don't want to read much text, do the following steps:
 kind create cluster --image kindest/node:v1.35.1 --wait 5m --name crossplane-argocd
 
 # Install ArgoCD
-kubectl apply -k argocd/install
+kubectl apply --server-side --force-conflicts -k argocd/install
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s
 
 # Access ArgoUI
@@ -239,9 +239,10 @@ With this simple manifest and it's integration into our [`kustomization.yaml`](a
 Now we have everything prepared to install ArgoCD via Kustomize. Simply run a `kubectl apply -k` aimed to our previously created directory:
 
 ```shell
-kubectl apply -k argocd/install
+kubectl apply --server-side --force-conflicts -k argocd/install
 ```
 
+> We're using `--server-side --force-conflicts` here in order to prevent errors like `The CustomResourceDefinition "applicationsets.argoproj.io" is invalid: metadata.annotations: Too long: may not be more than 262144 bytes` (see https://argo-cd.readthedocs.io/en/stable/operator-manual/upgrading/3.2-3.3/)
 
 
 
