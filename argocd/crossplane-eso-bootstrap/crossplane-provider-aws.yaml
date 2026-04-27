@@ -15,7 +15,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: HEAD
+    targetRevision: crossplane-v2-argo-v3
     path: upbound/provider-aws/provider
   destination:
     namespace: default
