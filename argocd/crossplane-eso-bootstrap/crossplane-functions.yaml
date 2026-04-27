@@ -15,7 +15,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: crossplane-v2-argo-v3
+    targetRevision: HEAD
     path: crossplane-contrib/function-patch-and-transform
   destination:
     namespace: default

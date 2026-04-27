@@ -9,7 +9,7 @@ spec:
     region: eu-central-1
     nodes:
       count: 3
-  # Crossplane creates the secret object in the same namespace as the Claim
-  # see https://docs.crossplane.io/latest/concepts/claims/#claim-connection-secrets
+  # Here we can define the name of the Secret Crossplane will populate the EKSClusters kubeconfig to
+  # see https://docs.crossplane.io/latest/guides/connection-details-composition/
   writeConnectionSecretToRef:
     name: eks-cluster-kubeconfig
