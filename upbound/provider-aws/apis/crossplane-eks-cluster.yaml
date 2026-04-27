@@ -3,4 +3,4 @@ kind: Configuration
 metadata:
   name: crossplane-eks-cluster
 spec:
-  package: ghcr.io/jonashackt/crossplane-eks-cluster:v2.0.0
+  package: ghcr.io/jonashackt/crossplane-eks-cluster:v2.0.1
