@@ -98,7 +98,7 @@ https://docs.crossplane.io/latest/cli/
 Also we should install the crossplane CLI
 
 ```shell
-curl -sL "https://raw.githubusercontent.com/crossplane/crossplane/master/install.sh" | sh
+curl -sL "https://raw.githubusercontent.com/crossplane/crossplane/main/install.sh" | sh
 sudo mv crossplane /usr/local/bin
 ```
 
