@@ -681,6 +681,163 @@ Now if we have a look into `crossplane` App of Apps we see all the needed compon
 
 
 
+### Optimizing the App-of-App-Pattern: dynamic targetRevisions based on the Application-root's Revision 
+
+There's one thing though in this implementation of the cluster-bootstrapping using the App-of-App-Pattern, that's not ideal: If you want to develop the setup further and create a feature-branch for it, you need to change ALL the `Application` manifests of the setup manually to point to the new development branch - otherwise the newly created branch won't have any effect...
+
+As I prefer Kustomize in my projects over Helm - and heavily use it already (e.g. to install Argo itself), there's luckily a new function in ArgoCD: [Inline Kustomize Patches in ArgoCD Applications](https://argo-cd.readthedocs.io/en/stable/user-guide/kustomize/#patches). With this we can use our root App-of-Apps to do something like this (defined in [argocd/crossplane-eso-bootstrap.yaml](argocd/crossplane-eso-bootstrap.yaml):
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+...
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jonashackt/crossplane-argocd
+    path: argocd/crossplane-eso-bootstrap
+    targetRevision: HEAD
+    kustomize:
+      patches:
+        - target:
+            group: argoproj.io
+            version: v1alpha1
+            kind: Application
+          patch: |-
+            - op: replace
+              path: /spec/source/targetRevision
+              value: 1ef2e9103982f34454794f7bc1452bcb22952c37
+```
+
+The point here is to leave the `name` out of the `kustomize.patches[target]` - with that, all Child-ArgoCD-Applications will get the overlay including the defined/patched revision `1ef2e9103982f34454794f7bc1452bcb22952c37`.
+
+We also need to create a [kustomization.yaml](argocd/crossplane-eso-bootstrap/kustomization.yaml) in the `argocd/crossplane-eso-bootstrap` directory in order to tell Argo, that our App-of-Apps are now using a Kustomize overlay. Otherwhise we would run into errors like this:
+
+```shell
+{"level":"fatal","msg":"rpc error: code = Unknown desc = kustomization file not found in the path","time":"2026-08-20T14:33:40+02:00"}
+```
+
+The next question is: how do we (pre-)render our App-of-Apps leveraging this inline Kustomization?
+
+A simple `kustomize build ..` doesn't work here, since the kustomize execution does run in ArgoCD internally.
+
+Luckily there's the `argocd app diff` command together with the `--local` parameter to use your locally changed root manifest [argocd/crossplane-eso-bootstrap.yaml](argocd/crossplane-eso-bootstrap.yaml) and the `--server-side-generate`, which - used with --local - will send your manifests to the server for diffing.
+
+In order to avoid errors like:
+
+```shell
+{"level":"fatal","msg":"rpc error: code = Unauthenticated desc = invalid session: token signature is invalid: signature is invalid","time":"2026-08-20T13:52:29+02:00"}
+```
+
+we need to login with our `argocd` CLI to our local `kind` cluster first (running our Kustomize installed Argo) via (a `kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8080:80` should be running prior):
+
+```shell
+argocd login localhost:8080 --username admin --password $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo) --insecure
+# 'admin:login' logged in successfully
+# Context 'localhost:8080' updated
+```
+
+Before running the `argocd app diff`, we also need to make sure, our ArgoCD server does know our App-of-App-Manifests, so let's apply them first:
+
+```shell
+kubectl apply -n argocd -f argocd/crossplane-eso-bootstrap.yaml
+```
+
+Now the `argocd app diff` command should work and render our Manifests including the Git sha:
+
+```shell
+argocd app diff crossplane-eso-bootstrap \
+  --local "$(pwd)" \
+  --server-side-generate
+
+
+===== argoproj.io/Application /external-secrets-operator ======
+0a1,32
+> apiVersion: argoproj.io/v1alpha1
+> kind: Application
+> metadata:
+>   annotations:
+>     argocd.argoproj.io/sync-wave: "0"
+>     argocd.argoproj.io/tracking-id: crossplane-eso-bootstrap:argoproj.io/Application:crossplane-eso/external-secrets-operator
+>   finalizers:
+>   - resources-finalizer.argocd.argoproj.io
+>   labels:
+>     app.kubernetes.io/managed-by: argocd
+>     crossplane.jonashackt.io: crossplane
+>   name: external-secrets-operator
+> spec:
+>   destination:
+>     namespace: external-secrets
+>     server: https://kubernetes.default.svc
+>   project: default
+>   source:
+>     path: external-secrets/install
+>     repoURL: https://github.com/jonashackt/crossplane-argocd
+>     targetRevision: 1ef2e9103982f34454794f7bc1452bcb22952c37
+>   syncPolicy:
+>     automated:
+>       prune: true
+>     retry:
+>       backoff:
+>         duration: 5s
+>         factor: 2
+>         maxDuration: 1m
+>       limit: 1
+>     syncOptions:
+>     - CreateNamespace=true
+
+===== argoproj.io/Application /crossplane-provider-argocd ======
+0a1,30
+> apiVersion: argoproj.io/v1alpha1
+> kind: Application
+> metadata:
+>   annotations:
+>     argocd.argoproj.io/sync-wave: "4"
+>     argocd.argoproj.io/tracking-id: crossplane-eso-bootstrap:argoproj.io/Application:crossplane-eso/crossplane-provider-argocd
+>   finalizers:
+>   - resources-finalizer.argocd.argoproj.io
+>   labels:
+>     app.kubernetes.io/managed-by: argocd
+>     crossplane.jonashackt.io: crossplane
+>   name: crossplane-provider-argocd
+> spec:
+>   destination:
+>     namespace: default
+>     server: https://kubernetes.default.svc
+>   project: default
+>   source:
+>     path: crossplane-contrib/provider-argocd/provider
+>     repoURL: https://github.com/jonashackt/crossplane-argocd
+>     targetRevision: 1ef2e9103982f34454794f7bc1452bcb22952c37
+>   syncPolicy:
+>     automated:
+>       prune: true
+>     retry:
+>       backoff:
+>         duration: 5s
+>         factor: 2
+>         maxDuration: 1m
+>       limit: 5
+
+===== argoproj.io/Application /crossplane-provider-aws-config ======
+0a1,30
+> apiVersion: argoproj.io/v1alpha1
+> kind: Application
+> metadata:
+>   annotations:
+>     argocd.argoproj.io/sync-wave: "5"
+>     argocd.argoproj.io/tracking-id: crossplane-eso-bootstrap:argoproj.io/Application:crossplane-eso/crossplane-provider-aws-config
+>   finalizers:
+>   - resources-finalizer.argocd.argoproj.io
+>   labels:
+>     app.kubernetes.io/managed-by: argocd
+>     crossplane.jonashackt.io: crossplane
+>   name: crossplane-provider-aws-config
+...
+```
+
+
 
 
 
