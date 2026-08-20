@@ -24,7 +24,7 @@ spec:
           patch: |-
             - op: replace
               path: /spec/source/targetRevision
-              value: $ARGOCD_APP_REVISION
+              value: 1ef2e9103982f34454794f7bc1452bcb22952c37
   destination:
     server: https://kubernetes.default.svc
     namespace: crossplane-system
