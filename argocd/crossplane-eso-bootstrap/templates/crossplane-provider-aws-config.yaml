@@ -1,9 +1,9 @@
-# The ArgoCD Application for the Crossplane ArgoCD providers ProviderConfig
+# The ArgoCD Application for the AWS providers ProviderConfig
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-provider-argocd-config
+  name: crossplane-provider-aws-config
   namespace: argocd
   labels:
     crossplane.jonashackt.io: crossplane
@@ -15,8 +15,8 @@ spec:
   project: default
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: HEAD
-    path: crossplane-contrib/provider-argocd/config
+    targetRevision: {{ .Values.revision }}
+    path: upbound/provider-aws/config-eos
   destination:
     namespace: default
     server: https://kubernetes.default.svc
