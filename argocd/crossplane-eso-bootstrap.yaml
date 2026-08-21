@@ -15,16 +15,13 @@ spec:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     path: argocd/crossplane-eso-bootstrap
     targetRevision: HEAD
-    kustomize:
-      patches:
-        - target:
-            group: argoproj.io
-            version: v1alpha1
-            kind: Application
-          patch: |-
-            - op: replace
-              path: /spec/source/targetRevision
-              value: 1ef2e9103982f34454794f7bc1452bcb22952c37
+    # dynamically set all Child Applications to the repo's Git revision with this ArgoCD Kustomize inline patch using helm
+    helm:
+      parameters:
+        - name: revision
+          value: $ARGOCD_APP_SOURCE_TARGET_REVISION
+          # see https://argo-cd.readthedocs.io/en/latest/user-guide/helm/?#helm-parameters
+          # & https://argo-cd.readthedocs.io/en/stable/user-guide/build-environment/
   destination:
     server: https://kubernetes.default.svc
     namespace: crossplane-system

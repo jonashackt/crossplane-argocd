@@ -1,32 +1,30 @@
-# The ArgoCD Application for external-secrets-operator
+# The ArgoCD Application for the Crossplane ArgoCD providers ProviderConfig
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: external-secrets-operator
+  name: crossplane-provider-argocd-config
   namespace: argocd
   labels:
     crossplane.jonashackt.io: crossplane
   finalizers:
     - resources-finalizer.argocd.argoproj.io
   annotations:
-    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-wave: "5"
 spec:
   project: default
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: HEAD
-    path: external-secrets/install
+    targetRevision: {{ .Values.revision }}
+    path: crossplane-contrib/provider-argocd/config
   destination:
+    namespace: default
     server: https://kubernetes.default.svc
-    namespace: external-secrets
   syncPolicy:
     automated:
       prune: true    
-    syncOptions:
-    - CreateNamespace=true
     retry:
-      limit: 1
+      limit: 5
       backoff:
         duration: 5s 
         factor: 2 

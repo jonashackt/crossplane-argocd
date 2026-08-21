@@ -1,0 +1,5 @@
+apiVersion: v2
+type: application
+name: crossplane-eso-bootstrap
+description: Argo CD applications bootstrapping all Crossplane components supporting targetRevision dynamic patching based on the current Git commit
+version: 0.1.0
