@@ -838,6 +838,76 @@ argocd app diff crossplane-eso-bootstrap \
 ```
 
 
+### Why I switched to Helm
+
+Sadly, Kustomize and the ArgoCD implementation of inline patches does not support to dynamically change the value of our inline patch (which we want to base dynamically on the Git branch name).
+
+But luckily in the process I found a great entry point for our problem with `argocd app set APP_NAME --revision`:
+
+```shell
+argocd app set crossplane-eso-bootstrap --revision my-branch-name
+```
+
+Is there a way we can leverage this command using native ArgoCD tools.
+
+And there's also [a great ArgoCD Build Environment variable](https://argo-cd.readthedocs.io/en/stable/user-guide/build-environment/) with `ARGOCD_APP_SOURCE_TARGET_REVISION`, which inherits the Git repositories `branch` name ready to substitute.
+
+So I had to switch to Helm (in order to prevent us from heavily relying on brittle undocumented or a cascade of features, that aren't meant for the job) - and there we have the [dynamic `values` substitution build into ArgoCD natively](https://argo-cd.readthedocs.io/en/latest/user-guide/helm/?#helm-parameters). 
+
+And this will allow us the following:
+
+```shell
+# this sets targetRevision only in the App-of-Apps (root)
+argocd app set crossplane-eso-bootstrap --revision refactor-multiple-targetRevisions
+          │
+          ▼
+# the .spec.source.helm.parameters.revision has 
+$ARGOCD_APP_SOURCE_TARGET_REVISION
+          │
+          ▼
+# In Argo now $ARGOCD_APP_SOURCE_TARGET_REVISION will be replaced by root's .spec.source.targetRevision
+# and substituted in all child Apps (isolated testable via helm template crossplane-eso-bootstrap argocd/crossplane-eso-bootstrap --set revision=refactor-multiple-targetRevisions)
+argocd app manifests crossplane-eso-bootstrap
+          │
+          ▼
+{{ .Values.revision }}
+          │
+          ├── crossplane
+          │   targetRevision: refactor-multiple-targetRevisions
+          │
+          ├── ESO
+          │   targetRevision: refactor-multiple-targetRevisions
+          │
+          ├── provider-aws
+          │   targetRevision: refactor-multiple-targetRevisions
+          │
+          └── provider-argocd
+              targetRevision: refactor-multiple-targetRevisions
+```
+
+We can already test drive this process without Argo (which is a huge benefit over Kustomize, where we had to add the application to a (running) ArgoCD instance (using `kubectl apply -n argocd -f argocd/crossplane-eso-bootstrap.yaml`) before we could even see the replacement working):
+
+```shell
+helm template crossplane-eso-bootstrap \
+  argocd/crossplane-eso-bootstrap \
+  --set revision=refactor-multiple-targetRevisions
+```
+
+Now since that works, we can leverage Argo to do the same:
+
+```shell
+kubectl apply -n argocd \
+  -f argocd/crossplane-eso-bootstrap.yaml
+
+# die targetRevision NUR in der App-of-Apps setzen
+# (die `{.spec.source.helm.parameters[?(@.name=="revision")].value}` bleibt unangetastet auf `$ARGOCD_APP_SOURCE_TARGET_REVISION` stehen)
+argocd app set crossplane-eso-bootstrap \
+  --revision refactor-multiple-targetRevisions
+
+# Alle (Child-Application-) Manifeste rendern
+argocd app manifests crossplane-eso-bootstrap
+```
+
 
 
 
