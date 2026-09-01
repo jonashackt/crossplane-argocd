@@ -6,4 +6,4 @@ appVersion: 0.0.0 # unused
 dependencies:
   - name: crossplane
     repository: https://charts.crossplane.io/stable
-    version: 2.3.4
+    version: 2.4.0
