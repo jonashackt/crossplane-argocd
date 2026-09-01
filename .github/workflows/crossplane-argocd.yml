@@ -53,8 +53,8 @@ jobs:
 
       - name: Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider
         run: |
-          echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553"
-          kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443 &
+          echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553 - and ignoring broken pipe errors"
+          kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443 2> >(grep -v "broken pipe" >&2) &
           echo "--- Wait shortly to let the port forward come available"
           sleep 1
 
@@ -65,8 +65,8 @@ jobs:
           echo "--- Let Argo do it's magic installing all Crossplane components"
           kubectl apply -n argocd -f argocd/crossplane-bootstrap.yaml 
 
-          echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553"
-          kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8080:80 &
+          echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553 - and ignoring broken pipe errors"
+          kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8080:80 2> >(grep -v "broken pipe" >&2) &
           echo "--- Wait shortly to let the port forward become available"
           sleep 1
 
