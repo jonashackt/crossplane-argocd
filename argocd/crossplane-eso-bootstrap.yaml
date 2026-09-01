@@ -15,7 +15,7 @@ spec:
     repoURL: https://github.com/jonashackt/crossplane-argocd
     path: argocd/crossplane-eso-bootstrap
     targetRevision: HEAD
-    # dynamically set all Child Applications to the repo's Git revision with this ArgoCD Kustomize inline patch using helm
+    # dynamically set all Child Applications to the repo's Git revision using Helm
     helm:
       parameters:
         - name: revision

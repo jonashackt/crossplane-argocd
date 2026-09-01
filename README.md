@@ -55,6 +55,18 @@ bash create-argocd-api-token-secret.sh
 # Bootstrap Crossplane via ArgoCD
 kubectl apply -n argocd -f argocd/crossplane-eso-bootstrap.yaml 
 
+#################################
+## ONLY if I want to change the branch of my App-of-Apps, I need to run argocd app set crossplane-eso-bootstrap --revision BRANCHNAME
+
+## But before we need to login to our argocd instance first on order to be able to use the argocd commands
+## without Unauthenticated errors
+argocd login localhost:8080 --username admin --password $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo) --insecure
+
+## set the targetRevision ONLY in the App-of-Apps Application
+## (the `{.spec.source.helm.parameters[?(@.name=="revision")].value}` stays unchanged at `$ARGOCD_APP_SOURCE_TARGET_REVISION`)
+argocd app set crossplane-eso-bootstrap --revision refactor-multiple-targetRevisions
+################################
+
 kubectl get crd
 
 # Install Crossplane EKS APIs/Composition
@@ -857,7 +869,7 @@ So I had to switch to Helm (in order to prevent us from heavily relying on britt
 And this will allow us the following:
 
 ```shell
-# this sets targetRevision only in the App-of-Apps (root)
+# Set ONLY the targetRevision in the App-of-Apps (NOT the .spec.source.helm.parameters.revision, that will later populate the child Applications)
 argocd app set crossplane-eso-bootstrap --revision refactor-multiple-targetRevisions
           │
           ▼
@@ -865,7 +877,7 @@ argocd app set crossplane-eso-bootstrap --revision refactor-multiple-targetRevis
 $ARGOCD_APP_SOURCE_TARGET_REVISION
           │
           ▼
-# In Argo now $ARGOCD_APP_SOURCE_TARGET_REVISION will be replaced by root's .spec.source.targetRevision
+# In Argo now $ARGOCD_APP_SOURCE_TARGET_REVISION will automatically be replaced by root's .spec.source.targetRevision
 # and substituted in all child Apps (isolated testable via helm template crossplane-eso-bootstrap argocd/crossplane-eso-bootstrap --set revision=refactor-multiple-targetRevisions)
 argocd app manifests crossplane-eso-bootstrap
           │
@@ -899,8 +911,14 @@ Now since that works, we can leverage Argo to do the same:
 kubectl apply -n argocd \
   -f argocd/crossplane-eso-bootstrap.yaml
 
-# die targetRevision NUR in der App-of-Apps setzen
-# (die `{.spec.source.helm.parameters[?(@.name=="revision")].value}` bleibt unangetastet auf `$ARGOCD_APP_SOURCE_TARGET_REVISION` stehen)
+# ONLY, if I want to change the branch of my App-of-Apps incl. all childs (e.g. for CI/CD), we can now use argocd app set --revision to change the branch automatically
+
+# Therefore we need to login to our argocd instance first on order to be able to use the argocd commands
+# without Unauthenticated errors
+argocd login localhost:8080 --username admin --password $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo) --insecure
+
+# set the targetRevision ONLY in the App-of-Apps Application
+# (the `{.spec.source.helm.parameters[?(@.name=="revision")].value}` stays unchanged at `$ARGOCD_APP_SOURCE_TARGET_REVISION`)
 argocd app set crossplane-eso-bootstrap \
   --revision refactor-multiple-targetRevisions
 
