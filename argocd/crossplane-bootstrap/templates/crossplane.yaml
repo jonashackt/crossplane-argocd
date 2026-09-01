@@ -15,7 +15,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: HEAD
+    targetRevision: {{ .Values.revision }}
     path: crossplane
   destination:
     server: https://kubernetes.default.svc
