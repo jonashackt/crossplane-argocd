@@ -34,8 +34,8 @@ kind create cluster --image kindest/node:v1.35.1 --wait 5m --name crossplane-arg
 kubectl apply --server-side --force-conflicts -k argocd/install
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s
 
-# Access ArgoUI
-kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8080:80
+# Access ArgoUI using port-forwarding (and ignoring bening broken pipe errors)
+kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8080:80 2> >(grep -v "broken pipe" >&2) &
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
 
 # Create Secret with Doppler Service Token
@@ -46,7 +46,7 @@ kubectl create secret generic doppler-token-auth-api --from-literal dopplerToken
 kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./aws-creds.conf
 
 # Prepare Secret with ArgoCD API Token for Crossplane ArgoCD Provider (port forward can be run in subshell appending ' &' + Ctrl-C and beeing deleted after running create-argocd-api-token-secret.sh via 'fg 1%' + Ctrl-C)
-kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443
+kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8443:443 2> >(grep -v "broken pipe" >&2) &
 bash create-argocd-api-token-secret.sh
 
 
