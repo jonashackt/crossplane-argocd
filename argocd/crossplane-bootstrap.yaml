@@ -13,8 +13,15 @@ spec:
   project: default
   source:
     repoURL: https://github.com/jonashackt/crossplane-argocd
-    targetRevision: HEAD
     path: argocd/crossplane-bootstrap
+    targetRevision: HEAD
+    # dynamically set all Child Applications to the repo's Git revision using Helm
+    helm:
+      parameters:
+        - name: revision
+          value: $ARGOCD_APP_SOURCE_TARGET_REVISION
+          # see https://argo-cd.readthedocs.io/en/latest/user-guide/helm/?#helm-parameters
+          # & https://argo-cd.readthedocs.io/en/stable/user-guide/build-environment/
   destination:
     server: https://kubernetes.default.svc
     namespace: crossplane-system
