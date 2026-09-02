@@ -62,9 +62,6 @@ jobs:
 
       - name: Use ArgoCD's AppOfApps pattern to deploy all Crossplane components
         run: |
-          echo "--- Let Argo do it's magic installing all Crossplane components"
-          kubectl apply -n argocd -f argocd/crossplane-bootstrap.yaml 
-
           echo "--- Access the ArgoCD server with a port-forward in the background, see https://stackoverflow.com/a/72983554/4964553 - and ignoring broken pipe errors"
           kubectl port-forward -n argocd --address='0.0.0.0' service/argocd-server 8080:80 2> >(grep -v "broken pipe" >&2) &
           echo "--- Wait shortly to let the port forward become available"
@@ -72,6 +69,9 @@ jobs:
 
           echo "--- Login to our argocd instance first on order to be able to use the argocd commands without Unauthenticated errors"
           argocd login localhost:8080 --username admin --password $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo) --insecure
+
+          echo "--- Let Argo do it's magic installing all Crossplane components"
+          kubectl apply -n argocd -f argocd/crossplane-bootstrap.yaml 
 
           echo "--- set the targetRevision to '$BRANCH_NAME' in the App-of-Apps Application, which will then be populated via Helm/ArgoCD to all Child Applications, see https://argo-cd.readthedocs.io/en/latest/user-guide/helm/?#helm-parameters"
           argocd app set crossplane-bootstrap --revision "$BRANCH_NAME"
@@ -84,6 +84,6 @@ jobs:
 
           echo "--- Wait until AWS Provider is up and running (now prefaced with until to prevent Error from server (NotFound): providers.pkg.crossplane.io 'upbound-provider-aws-s3' not found)"
           until kubectl get provider/upbound-provider-aws-s3 > /dev/null 2>&1; do : ; done
-          kubectl wait --for=condition=healthy --timeout=180s provider/upbound-provider-aws-s3
+          kubectl wait --for=condition=healthy --timeout=300s provider/upbound-provider-aws-s3
 
           kubectl get all -n crossplane-system
