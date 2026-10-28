@@ -9,5 +9,20 @@ resources:
 patches:
 - path: argocd-cm-patch.yaml
 - path: argocd-rbac-cm-patch.yaml
+## Upstream sets imagePullPolicy: Always, so the kubelet asks the registry on every pod start - even if the image is already on the node
+## (e.g. preloaded via kind load in CI). public.ecr.aws (argocd-redis) rate limits that to 1 anonymous pull/s, so IfNotPresent (the default for pinned tags) is used instead
+- target:
+    kind: Deployment|StatefulSet
+  patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/imagePullPolicy
+      value: IfNotPresent
+- target:
+    kind: Deployment
+    name: argocd-dex-server
+  patch: |-
+    - op: add
+      path: /spec/template/spec/initContainers/0/imagePullPolicy
+      value: IfNotPresent
 
 namespace: argocd
