@@ -36,7 +36,8 @@ jobs:
           echo "--- Wait for Argo to become ready"
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s
 
-          echo "--- Also wait for the repo-server, since 'argocd app create' renders the manifests through it"
+          echo "--- Also wait for redis & the repo-server, since 'argocd app create' renders the manifests through the repo-server, which needs redis (a failed redis image pull otherwise ends in 'DeadlineExceeded')"
+          kubectl rollout status deployment/argocd-redis -n argocd --timeout=300s
           kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
 
       - name: Prepare crossplane AWS Secret
