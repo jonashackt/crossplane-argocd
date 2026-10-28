@@ -257,6 +257,41 @@ kubectl apply --server-side --force-conflicts -k argocd/install
 
 > We're using `--server-side --force-conflicts` here in order to prevent errors like `The CustomResourceDefinition "applicationsets.argoproj.io" is invalid: metadata.annotations: Too long: may not be more than 262144 bytes` (see https://argo-cd.readthedocs.io/en/stable/operator-manual/upgrading/3.2-3.3/)
 
+> The [`kustomization.yaml`](argocd/install/kustomization.yaml) also patches `imagePullPolicy` of all ArgoCD containers from upstream's `Always` to `IfNotPresent` (which is the Kubernetes default for pinned tags anyway). With `Always` the kubelet asks the registry on every pod start, even if the image is already on the node. In GitHub Actions we preload the images into kind (see [.github/actions/kind-preload-images](.github/actions/kind-preload-images/action.yml)) to survive the rate limits of registries like `public.ecr.aws` (hosting the `argocd-redis` image), which only allows 1 anonymous pull per second for the shared IPs of GitHub-hosted runners. The patches address `containers/0`, so the workflows fail early (instead of silently pulling again), if an ArgoCD update changes the container layout and an `Always` remains.
+
+You can test the patch locally in two steps. First without any cluster: There must be no `Always` left in the rendered manifests:
+
+```shell
+kubectl kustomize argocd/install | grep imagePullPolicy | sort | uniq -c
+```
+
+And then with kind: Preload the ArgoCD images (exactly as the GitHub Action does), install ArgoCD and check the pod events. With `IfNotPresent` the kubelet must not pull anything anymore, but report `already present on machine`:
+
+```shell
+IMAGES=$(kubectl kustomize argocd/install | grep -E '^\s+image:' | sed 's/^\s*image: //' | sort -u)
+
+# pull the images on the host and load them into the kind cluster
+> This is written for bash. zsh doesn't split unquoted variables into words: there use `${=IMAGES}` instead of `$IMAGES` in the `for` and `docker save` lines.
+
+for image in $IMAGES; do docker pull --platform linux/amd64 "$image"; done
+# zsh: for image in ${=IMAGES}; do docker pull --platform linux/amd64 "$image"; done
+docker save --output /tmp/argocd-images.tar $IMAGES
+# zsh: docker save --output /tmp/argocd-images.tar ${=IMAGES}
+kind load image-archive /tmp/argocd-images.tar --name crossplane-argocd
+
+kubectl apply --server-side --force-conflicts -k argocd/install
+kubectl rollout status deployment/argocd-redis -n argocd
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s
+
+# expect NO 'Pulling' events and 'already present on machine' instead
+kubectl get events -n argocd --field-selector reason=Pulling
+kubectl get events -n argocd --field-selector reason=Pulled | grep "already present"
+```
+
+> If ArgoCD is already running in your cluster, the changed pull policy triggers a rollout of all ArgoCD pods. For a clean comparison use a fresh cluster (`kind delete cluster --name crossplane-argocd` & create it again).
+
+
+
 
 
 ### Accessing ArgoCD GUI
