@@ -1,6 +1,6 @@
 {
   "extends": [
-    "config:base",
+    "config:recommended",
     "group:all"
   ],
   "automerge": true,
@@ -9,9 +9,9 @@
     "automerge": false
   },
   "kubernetes": {
-    "fileMatch": ["\\.yaml$"]
+    "managerFilePatterns": ["/\\.yaml$/"]
   },
   "crossplane": {
-    "fileMatch": ["\\.yaml$"]
+    "managerFilePatterns": ["/\\.yaml$/"]
   }
 }
