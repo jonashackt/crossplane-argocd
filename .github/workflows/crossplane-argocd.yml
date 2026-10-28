@@ -3,7 +3,6 @@ name: crossplane-argocd
 on: [push]
 
 env:
-  KIND_NODE_VERSION: v1.35.1
   # AWS
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -22,15 +21,15 @@ jobs:
         uses: imajeetyadav/argocd-cli@v2
 
       - name: Spin up kind
-        run: |          
-          echo "--- Create kind cluster"
-          kind create cluster --image "kindest/node:$KIND_NODE_VERSION" --wait 5m
-
-          echo "--- Let's try to access our kind cluster via kubectl"
-          kubectl get nodes
+        uses: helm/kind-action@v1.15.1
+        with:
+          wait: 5m
 
       - name: Install ArgoCD into kind
         run: |
+          echo "--- Let's try to access our kind cluster via kubectl"
+          kubectl get nodes
+
           echo " Install & configure ArgoCD via Kustomize - see https://stackoverflow.com/a/71692892/4964553"
           kubectl apply --server-side --force-conflicts -k argocd/install
           
@@ -82,7 +81,7 @@ jobs:
 
           echo "--- Wait until AWS Provider is up and running (now prefaced with until to prevent Error from server (NotFound): providers.pkg.crossplane.io 'upbound-provider-aws-s3' not found)"
           until kubectl get provider/upbound-provider-aws-s3 > /dev/null 2>&1; do : ; done
-          kubectl wait --for=condition=healthy --timeout=300s provider/upbound-provider-aws-s3
+          kubectl wait --for=condition=healthy --timeout=180s provider/upbound-provider-aws-s3
 
           kubectl get all -n crossplane-system
 
