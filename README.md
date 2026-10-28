@@ -54,17 +54,16 @@ bash create-argocd-api-token-secret.sh
 
 # Bootstrap Crossplane via ArgoCD
 kubectl apply -n argocd -f argocd/crossplane-eso-bootstrap.yaml 
-
 #################################
-## ONLY if I want to change the branch of my App-of-Apps, I need to run argocd app set crossplane-eso-bootstrap --revision BRANCHNAME
+## ONLY if I want to use a different branch than HEAD for the App-of-Apps (e.g. in CI/CD), create the Application directly via argocd app create --revision BRANCHNAME instead of 'kubectl apply' + 'argocd app set'. Otherwise all Child Applications would start on HEAD first and switch the branch mid-flight (e.g. Crossplane & the providers would get installed and upgraded at the same time)
 
-## But before we need to login to our argocd instance first on order to be able to use the argocd commands
+## Therefore we need to login to our argocd instance first on order to be able to use the argocd commands
 ## without Unauthenticated errors
 argocd login localhost:8080 --username admin --password $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo) --insecure
 
 ## set the targetRevision ONLY in the App-of-Apps Application
 ## (the `{.spec.source.helm.parameters[?(@.name=="revision")].value}` stays unchanged at `$ARGOCD_APP_SOURCE_TARGET_REVISION`)
-argocd app set crossplane-eso-bootstrap --revision refactor-multiple-targetRevisions
+argocd app create --file argocd/crossplane-eso-bootstrap.yaml --revision refactor-multiple-targetRevisions --upsert
 ################################
 
 kubectl get crd
@@ -870,7 +869,7 @@ And this will allow us the following:
 
 ```shell
 # Set ONLY the targetRevision in the App-of-Apps (NOT the .spec.source.helm.parameters.revision, that will later populate the child Applications)
-argocd app set crossplane-eso-bootstrap --revision refactor-multiple-targetRevisions
+argocd app create --file argocd/crossplane-eso-bootstrap.yaml --revision refactor-multiple-targetRevisions --upsert
           │
           ▼
 # the .spec.source.helm.parameters.revision has 
@@ -908,23 +907,29 @@ helm template crossplane-eso-bootstrap \
 Now since that works, we can leverage Argo to do the same:
 
 ```shell
+# If we just want to use HEAD:
 kubectl apply -n argocd \
   -f argocd/crossplane-eso-bootstrap.yaml
 
-# ONLY, if I want to change the branch of my App-of-Apps incl. all childs (e.g. for CI/CD), we can now use argocd app set --revision to change the branch automatically
+# If I want to use another branch for my App-of-Apps incl. all childs (e.g. for CI/CD), we can use argocd app create --revision
+# to create the App-of-Apps directly on that branch.
 
 # Therefore we need to login to our argocd instance first on order to be able to use the argocd commands
 # without Unauthenticated errors
 argocd login localhost:8080 --username admin --password $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo) --insecure
 
-# set the targetRevision ONLY in the App-of-Apps Application
+# create the App-of-Apps Application with the targetRevision ONLY set in the App-of-Apps Application
 # (the `{.spec.source.helm.parameters[?(@.name=="revision")].value}` stays unchanged at `$ARGOCD_APP_SOURCE_TARGET_REVISION`)
-argocd app set crossplane-eso-bootstrap \
-  --revision refactor-multiple-targetRevisions
+argocd app create \
+  --file argocd/crossplane-eso-bootstrap.yaml \
+  --revision refactor-multiple-targetRevisions \
+  --upsert
 
 # Alle (Child-Application-) Manifeste rendern
 argocd app manifests crossplane-eso-bootstrap
 ```
+
+> Why not `kubectl apply` followed by `argocd app set --revision`? ArgoCD starts syncing the freshly applied App-of-Apps immediately on `HEAD`. All Child Applications get created with `HEAD` first and are switched to the branch only afterwards. If the branch contains other versions than `HEAD` (e.g. a Renovate branch with a new Crossplane Helm chart & provider versions), Crossplane and the providers get installed and upgraded at the same time, which can leave the AWS provider stuck in an unhealthy state. `argocd app set --revision` on an existing App-of-Apps is still fine for switching an already settled setup to another branch.
 
 
 
