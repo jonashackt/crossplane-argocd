@@ -1,0 +1,90 @@
+name: Preload images into kind
+description: >
+  Pulls the given container images (with retries and an Actions cache) and loads them into an existing kind cluster,
+  so the kind node never has to pull them itself. Useful, because registries like public.ecr.aws rate limit the shared IPs of GitHub-hosted runners.
+  Needs docker and kind on the PATH (e.g. after helm/kind-action) on a Linux runner.
+
+inputs:
+  images:
+    description: Container images to preload, separated by whitespace or newlines
+    required: true
+  cluster-name:
+    description: Name of the kind cluster (default of helm/kind-action)
+    required: false
+    default: chart-testing
+  platform:
+    description: Platform of the images to pull
+    required: false
+    default: linux/amd64
+  retries:
+    description: Number of pull attempts per image
+    required: false
+    default: "5"
+  retry-delay:
+    description: Seconds to wait between pull attempts
+    required: false
+    default: "30"
+
+outputs:
+  cache-hit:
+    description: Whether the images were restored from the Actions cache
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Normalize image list
+      id: images
+      shell: bash
+      env:
+        IMAGES: ${{ inputs.images }}
+        PLATFORM: ${{ inputs.platform }}
+      run: |
+        LIST=$(echo "$IMAGES" | tr -s '[:space:]' '\n' | sed '/^$/d' | sort -u)
+        [ -n "$LIST" ] || { echo "--- No images given"; exit 1; }
+        echo "$LIST" > "$RUNNER_TEMP/kind-preload-images.txt"
+        echo "hash=$(printf '%s\n%s\n' "$PLATFORM" "$LIST" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+    - name: Restore cached images
+      id: cache
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ runner.temp }}/kind-preload-images.tar
+        key: kind-preload-images-${{ steps.images.outputs.hash }}
+
+    - name: Pull images (with retries)
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        PLATFORM: ${{ inputs.platform }}
+        RETRIES: ${{ inputs.retries }}
+        RETRY_DELAY: ${{ inputs.retry-delay }}
+      run: |
+        IMAGES=$(cat "$RUNNER_TEMP/kind-preload-images.txt")
+        for image in $IMAGES; do
+          echo "--- Pulling $image"
+          pulled=false
+          for attempt in $(seq 1 "$RETRIES"); do
+            if docker pull --platform "$PLATFORM" "$image"; then pulled=true; break; fi
+            echo "--- Pulling $image failed (attempt $attempt/$RETRIES), retrying in ${RETRY_DELAY}s"
+            sleep "$RETRY_DELAY"
+          done
+          $pulled || { echo "--- Giving up on $image"; exit 1; }
+        done
+        docker save --output "$RUNNER_TEMP/kind-preload-images.tar" $IMAGES
+
+    # separate save step right after the pull, since the post step of actions/cache is skipped if a later step of the job fails
+    - name: Save images to cache
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ runner.temp }}/kind-preload-images.tar
+        key: kind-preload-images-${{ steps.images.outputs.hash }}
+
+    - name: Load images into kind
+      shell: bash
+      env:
+        CLUSTER_NAME: ${{ inputs.cluster-name }}
+      run: |
+        echo "--- Loading images into kind cluster '$CLUSTER_NAME' (cache hit: ${{ steps.cache.outputs.cache-hit == 'true' }})"
+        kind load image-archive "$RUNNER_TEMP/kind-preload-images.tar" --name "$CLUSTER_NAME"
