@@ -36,6 +36,9 @@ jobs:
           echo "--- Wait for Argo to become ready"
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --namespace argocd --timeout=300s
 
+          echo "--- Also wait for the repo-server, since 'argocd app create' renders the manifests through it"
+          kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
+
       - name: Prepare crossplane AWS Secret
         run: |
           echo "--- Create aws-creds.conf file"
@@ -88,8 +91,18 @@ jobs:
       - name: Debug output on failure
         if: failure()
         run: |
+          echo "--- ArgoCD pods"
+          kubectl get pods -n argocd -o wide || true
+          echo "--- ArgoCD repo-server (renders the manifests for 'argocd app create')"
+          kubectl describe pods -n argocd -l app.kubernetes.io/name=argocd-repo-server || true
+          kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --tail=200 || true
+          echo "--- ArgoCD server logs"
+          kubectl logs -n argocd -l app.kubernetes.io/name=argocd-server --tail=100 || true
+          echo "--- ArgoCD NetworkPolicies & Events"
+          kubectl get networkpolicy -n argocd || true
+          kubectl get events -n argocd --sort-by=.lastTimestamp || true
           echo "--- ArgoCD Applications"
-          kubectl get applications -n argocd
+          kubectl get applications.argoproj.io -n argocd || true
           echo "--- Crossplane Providers & ProviderRevisions"
           kubectl get providers,providerrevisions,functions,functionrevisions || true
           kubectl describe providers || true
