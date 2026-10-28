@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
 ## kustomize gives up fetching a remote base after 27s by default, which sporadically fails in CI ('hit 27s timeout running git fetch') - so we set timeout=120
-- github.com/argoproj/argo-cd//manifests/cluster-install?ref=v3.5.2&timeout=120
+- github.com/argoproj/argo-cd//manifests/cluster-install?ref=v3.5.6&timeout=120
 - argocd-namespace.yaml
 
 ## changes to config maps
