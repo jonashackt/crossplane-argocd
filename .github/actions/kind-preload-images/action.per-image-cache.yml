@@ -1,0 +1,115 @@
+# NOT IN USE: variant of action.yml with a cache per image instead of one cache for the whole image list (restore-keys + one tar per image, only changed images are pulled again).
+# GitHub only runs action.yml / action.yaml, so this file is inert. To use it: mv action.per-image-cache.yml action.yml
+# Only tested with stubbed docker/kind (cold start, warm cache, partial update, retries, give-up) - never in a real workflow run.
+name: Preload images into kind
+description: >
+  Pulls the given container images (with retries and an Actions cache) and loads them into an existing kind cluster,
+  so the kind node never has to pull them itself. Useful, because registries like public.ecr.aws rate limit the shared IPs of GitHub-hosted runners.
+  The images are cached one by one: If only some of the images change, only those are pulled again.
+  Needs docker and kind on the PATH (e.g. after helm/kind-action) on a Linux runner.
+
+inputs:
+  images:
+    description: Container images to preload, separated by whitespace or newlines
+    required: true
+  cluster-name:
+    description: Name of the kind cluster (default of helm/kind-action)
+    required: false
+    default: chart-testing
+  platform:
+    description: Platform of the images to pull
+    required: false
+    default: linux/amd64
+  retries:
+    description: Number of pull attempts per image
+    required: false
+    default: "5"
+  retry-delay:
+    description: Seconds to wait between pull attempts
+    required: false
+    default: "30"
+
+outputs:
+  cache-hit:
+    description: Whether the cache entry for exactly this list of images was found (otherwise a cache of an earlier list may have been reused partially)
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Normalize image list
+      id: images
+      shell: bash
+      env:
+        IMAGES: ${{ inputs.images }}
+        PLATFORM: ${{ inputs.platform }}
+      run: |
+        LIST=$(echo "$IMAGES" | tr -s '[:space:]' '\n' | sed '/^$/d' | sort -u)
+        [ -n "$LIST" ] || { echo "--- No images given"; exit 1; }
+        echo "$LIST" > "$RUNNER_TEMP/kind-preload-images.txt"
+        # restore-keys matches by prefix, so the platform belongs to the prefix (tars of another platform must never be restored)
+        echo "prefix=kind-preload-images-${PLATFORM//\//-}-" >> "$GITHUB_OUTPUT"
+        echo "hash=$(echo "$LIST" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+    # exact key = this list of images, restore-keys = the most recent cache of any earlier list (so unchanged images aren't pulled again)
+    - name: Restore cached images
+      id: cache
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ runner.temp }}/kind-preload-images
+        key: ${{ steps.images.outputs.prefix }}${{ steps.images.outputs.hash }}
+        restore-keys: ${{ steps.images.outputs.prefix }}
+
+    - name: Pull missing images (with retries)
+      shell: bash
+      env:
+        PLATFORM: ${{ inputs.platform }}
+        RETRIES: ${{ inputs.retries }}
+        RETRY_DELAY: ${{ inputs.retry-delay }}
+      run: |
+        DIR="$RUNNER_TEMP/kind-preload-images"
+        mkdir -p "$DIR"
+        IMAGES=$(cat "$RUNNER_TEMP/kind-preload-images.txt")
+        file_for() { echo "$DIR/$(echo "$1" | sed 's/[^A-Za-z0-9._-]/_/g').tar"; }
+
+        # drop tars of images that are not needed anymore, so the cache doesn't grow with every update
+        WANTED=$(for image in $IMAGES; do basename "$(file_for "$image")"; done)
+        for tar in "$DIR"/*.tar; do
+          [ -e "$tar" ] || continue
+          echo "$WANTED" | grep -qxF "$(basename "$tar")" || { echo "--- Removing cached $(basename "$tar") (not needed anymore)"; rm "$tar"; }
+        done
+
+        for image in $IMAGES; do
+          file=$(file_for "$image")
+          if [ -f "$file" ]; then echo "--- $image is already cached"; continue; fi
+          echo "--- Pulling $image"
+          pulled=false
+          for attempt in $(seq 1 "$RETRIES"); do
+            if docker pull --platform "$PLATFORM" "$image"; then pulled=true; break; fi
+            echo "--- Pulling $image failed (attempt $attempt/$RETRIES), retrying in ${RETRY_DELAY}s"
+            sleep "$RETRY_DELAY"
+          done
+          $pulled || { echo "--- Giving up on $image"; exit 1; }
+          docker save --output "$file" "$image"
+        done
+
+    # separate save step right after the pull, since the post step of actions/cache is skipped if a later step of the job fails
+    - name: Save images to cache
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ runner.temp }}/kind-preload-images
+        key: ${{ steps.images.outputs.prefix }}${{ steps.images.outputs.hash }}
+
+    - name: Load images into kind
+      shell: bash
+      env:
+        CLUSTER_NAME: ${{ inputs.cluster-name }}
+      run: |
+        DIR="$RUNNER_TEMP/kind-preload-images"
+        IMAGES=$(cat "$RUNNER_TEMP/kind-preload-images.txt")
+        for image in $IMAGES; do
+          file="$DIR/$(echo "$image" | sed 's/[^A-Za-z0-9._-]/_/g').tar"
+          echo "--- Loading $image into kind cluster '$CLUSTER_NAME'"
+          kind load image-archive "$file" --name "$CLUSTER_NAME"
+        done
